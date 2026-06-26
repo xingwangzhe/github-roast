@@ -171,6 +171,26 @@ async function fetchRecentPrs(username: string, count = 20): Promise<RecentPr[]>
   });
 }
 
+/**
+ * Whether a merged PR counts toward Ecosystem & Maintainer Impact (dimension 4).
+ *
+ * A substantial (non-trivial) PR qualifies if it lands in a popular repo, with a
+ * higher bar for the user's OWN repos:
+ *   - external repo (owner ≠ user): ≥200 stars — contributing to others is itself
+ *     a trust signal;
+ *   - own repo (owner = user):      ≥1000 stars — actively maintaining a genuinely
+ *     popular project (e.g. a 30k-star repo you created) is high-value, unfakeable
+ *     work. A low-star own repo does NOT count — that is the self-PR-farming
+ *     pattern, penalized separately.
+ */
+export function isEcosystemImpactPr(pr: RecentPr, loginLower: string): boolean {
+  const repo = pr.repo ?? "";
+  const owner = repo.includes("/") ? repo.split("/", 1)[0].toLowerCase() : "";
+  if (!owner || pr.trivial) return false;
+  const threshold = owner === loginLower ? 1000 : 200;
+  return pr.repo_stars >= threshold;
+}
+
 export async function collect(username: string): Promise<{
   metrics: RawMetrics;
   top_repos: TopRepo[];
@@ -302,21 +322,13 @@ export async function collect(username: string): Promise<{
   const recentPrs = await fetchRecentPrs(login);
   const trivialPrs = recentPrs.filter((p) => p.trivial).length;
 
-  // External/ecosystem impact: substantial PRs into popular repos NOT owned by user.
-  const externalSubstantial = recentPrs.filter((p) => {
-    const repo = p.repo ?? "";
-    const owner = repo.includes("/") ? repo.split("/", 1)[0].toLowerCase() : "";
-    const isExternal = owner !== "" && owner !== loginLower;
-    return isExternal && !p.trivial && p.repo_stars >= 200;
-  });
-  const maxExternalRepoStars = externalSubstantial.reduce(
-    (a, p) => Math.max(a, p.repo_stars),
-    0,
-  );
-  const externalDepthRaw =
-    Math.round(
-      externalSubstantial.reduce((a, p) => a + logRatio(p.repo_stars, 5000), 0) * 100,
-    ) / 100;
+  // Ecosystem & maintainer impact: substantial PRs into popular repos — others'
+  // projects (≥200★) or the user's own genuinely popular repos (≥1000★).
+  const impactPrs = recentPrs.filter((p) => isEcosystemImpactPr(p, loginLower));
+  const maxImpactRepoStars = impactPrs.reduce((a, p) => Math.max(a, p.repo_stars), 0);
+  const impactDepthRaw =
+    Math.round(impactPrs.reduce((a, p) => a + logRatio(p.repo_stars, 5000), 0) * 100) /
+    100;
 
   // Self-PR farming: PRs into the user's OWN <10-star repos.
   const selfFarmPrs = recentPrs.filter((p) => {
@@ -365,9 +377,9 @@ export async function collect(username: string): Promise<{
     days_since_last_activity: daysSinceActive,
     recent_merged_pr_sample: recentPrs.length,
     recent_trivial_pr_count: trivialPrs,
-    max_external_repo_stars: maxExternalRepoStars,
-    external_substantial_pr_count: externalSubstantial.length,
-    external_depth_raw: externalDepthRaw,
+    max_impact_repo_stars: maxImpactRepoStars,
+    impact_pr_count: impactPrs.length,
+    impact_depth_raw: impactDepthRaw,
     self_pr_farm_count: selfPrFarmCount,
     self_pr_farm_ratio: selfPrFarmRatio,
     star_inflation_suspect: starInflationSuspect,

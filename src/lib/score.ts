@@ -11,10 +11,22 @@
 
 import type { RawMetrics, RedFlag, Scoring, SubScores, Tier } from "./types";
 
-/** Round to `digits` decimals (half away from zero), mirroring the script's intent. */
+/**
+ * Round to `digits` decimals using round-half-to-even (banker's rounding), exactly
+ * matching Python's built-in `round()` — so the TS port stays bit-for-bit in parity
+ * with the canonical skill even when a sub-score lands on a .x5 boundary (e.g. 17.25).
+ */
 function round(value: number, digits = 0): number {
   const f = 10 ** digits;
-  return Math.round((value + Number.EPSILON) * f) / f;
+  const scaled = value * f;
+  const floor = Math.floor(scaled);
+  let r: number;
+  if (Math.abs(scaled - floor - 0.5) < 1e-9) {
+    r = floor % 2 === 0 ? floor : floor + 1; // exact half → nearest even
+  } else {
+    r = Math.round(scaled);
+  }
+  return r / f;
 }
 
 /** 0..1 scaled with a log curve: returns 1.0 when value >= full_at. */
@@ -28,7 +40,7 @@ export function score(m: RawMetrics): Scoring {
     account_maturity: 0,
     original_project_quality: 0,
     contribution_quality: 0,
-    external_impact: 0,
+    ecosystem_impact: 0,
     community_influence: 0,
     activity_authenticity: 0,
   };
@@ -62,10 +74,13 @@ export function score(m: RawMetrics): Scoring {
   const issuePts = logRatio(m.issues_created, 100) * 5;
   sub.contribution_quality = round(prVolume + acceptance + issuePts, 1);
 
-  // 4. External/Ecosystem Impact (20)
-  const prestige = logRatio(m.max_external_repo_stars, 100000) * 9;
-  const depth = Math.min(m.external_depth_raw / 8.0, 1.0) * 11;
-  sub.external_impact = round(prestige + depth, 1);
+  // 4. Ecosystem & Maintainer Impact (20) — substantial PRs into popular repos,
+  // whether contributing to others' projects or actively maintaining one's own
+  // popular repo. Hardest signal to fake; captures both contributor and
+  // creator/maintainer value.
+  const prestige = logRatio(m.max_impact_repo_stars, 100000) * 9;
+  const depth = Math.min(m.impact_depth_raw / 8.0, 1.0) * 11;
+  sub.ecosystem_impact = round(prestige + depth, 1);
 
   // 5. Community Influence (8)
   const followerPts = logRatio(m.followers, 2000) * 5;
