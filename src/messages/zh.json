@@ -16,6 +16,10 @@
     "zh": "中文",
     "en": "EN"
   },
+  "repoLink": {
+    "label": "开源",
+    "title": "源码与评分算法均开源 · 在 GitHub 查看"
+  },
   "home": {
     "leaderboardPill": "名人堂排行榜",
     "leaderboardPillTag": "看谁最强",

@@ -16,6 +16,10 @@
     "zh": "中文",
     "en": "EN"
   },
+  "repoLink": {
+    "label": "Source",
+    "title": "Source code & scoring algorithm are open source · View on GitHub"
+  },
   "home": {
     "leaderboardPill": "Hall of Fame",
     "leaderboardPillTag": "Who's on top",
