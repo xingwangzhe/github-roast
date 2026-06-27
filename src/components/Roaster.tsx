@@ -206,7 +206,24 @@ export function Roaster() {
   const style = display ? tierStyle(display.tier) : null;
   const { body: reportBody, roast: roastLine } = splitReport(report);
   const cardRef = useRef<HTMLDivElement>(null);
+  const badgeRef = useRef<HTMLDivElement>(null);
   const [savingImg, setSavingImg] = useState(false);
+  const [embedCopied, setEmbedCopied] = useState(false);
+
+  // Copy the GitHub-embeddable card snippet, then scroll to the preview section.
+  const copyCardEmbed = async () => {
+    const u = scan?.metrics.username;
+    if (!u) return;
+    const md = `[![GitHub Roast](${SITE_URL}/api/card/${u})](${SITE_URL}/u/${u})`;
+    try {
+      await navigator.clipboard.writeText(md);
+      setEmbedCopied(true);
+      setTimeout(() => setEmbedCopied(false), 2000);
+    } catch {
+      /* clipboard blocked */
+    }
+    badgeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const saveImage = async () => {
     if (!cardRef.current || savingImg) return;
@@ -358,6 +375,12 @@ export function Roaster() {
               >
                 {savingImg ? "生成中…" : "📸 保存炫耀图"}
               </button>
+              <button
+                onClick={copyCardEmbed}
+                className="rounded-full border border-white/10 px-4 py-1.5 text-xs text-zinc-300 hover:bg-white/10"
+              >
+                {embedCopied ? "已复制 ✓" : "📌 贴到 GitHub"}
+              </button>
             </div>
           </div>
 
@@ -377,7 +400,7 @@ export function Roaster() {
 
           {/* Badge snippet — appears once the roast finishes (score is recorded). */}
           {!roasting && (
-            <div className="mt-6">
+            <div ref={badgeRef} className="mt-6 scroll-mt-6">
               <CopyBadge baseUrl={SITE_URL} username={scan.metrics.username} />
             </div>
           )}

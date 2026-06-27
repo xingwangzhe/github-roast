@@ -4,23 +4,32 @@ import { useState } from "react";
 
 // User-facing copy kept in one place so wiring i18n later only touches this object.
 const T = {
-  heading: "📌 把徽章贴到你的主页",
-  blurb: "复制下面任意一段，贴进你的 GitHub Profile README，分数会自动保持最新。",
+  heading: "📌 贴到你的 GitHub 主页",
+  blurb: "复制下面任意一段贴进 Profile README，分数会自动保持最新，点击图片跳转你的详情页。",
+  badgeTitle: "小徽章",
+  cardTitle: "炫耀大卡",
   markdown: "Markdown",
   html: "HTML",
   copy: "复制",
   copied: "已复制 ✓",
-  alt: "GitHub Roast 评分徽章",
+  badgeAlt: "GitHub Roast 评分徽章",
+  cardAlt: "GitHub Roast",
 };
 
 export function CopyBadge({ baseUrl, username }: { baseUrl: string; username: string }) {
   const [copied, setCopied] = useState<string | null>(null);
 
   const base = baseUrl.replace(/\/$/, "");
-  const badgeUrl = `${base}/api/badge/${username}`;
   const pageUrl = `${base}/u/${username}`;
-  const markdown = `[![${T.alt}](${badgeUrl})](${pageUrl})`;
-  const html = `<a href="${pageUrl}"><img src="${badgeUrl}" alt="${T.alt}" /></a>`;
+  const badgeUrl = `${base}/api/badge/${username}`;
+  const cardUrl = `${base}/api/card/${username}`;
+
+  const snippets = {
+    badgeMd: `[![${T.badgeAlt}](${badgeUrl})](${pageUrl})`,
+    badgeHtml: `<a href="${pageUrl}"><img src="${badgeUrl}" alt="${T.badgeAlt}" /></a>`,
+    cardMd: `[![${T.cardAlt}](${cardUrl})](${pageUrl})`,
+    cardHtml: `<a href="${pageUrl}"><img src="${cardUrl}" alt="${T.cardAlt}" width="600" /></a>`,
+  };
 
   const copy = async (text: string, key: string) => {
     try {
@@ -32,15 +41,15 @@ export function CopyBadge({ baseUrl, username }: { baseUrl: string; username: st
     }
   };
 
-  const Row = ({ label, value }: { label: string; value: string }) => (
+  const Row = ({ label, value, k }: { label: string; value: string; k: string }) => (
     <div>
       <div className="mb-1 flex items-center justify-between">
         <span className="text-xs font-medium text-zinc-400">{label}</span>
         <button
-          onClick={() => copy(value, label)}
+          onClick={() => copy(value, k)}
           className="rounded-md border border-white/10 px-2 py-0.5 text-[11px] text-zinc-300 hover:bg-white/10"
         >
-          {copied === label ? T.copied : T.copy}
+          {copied === k ? T.copied : T.copy}
         </button>
       </div>
       <pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-[11px] leading-relaxed text-zinc-300">
@@ -54,14 +63,30 @@ export function CopyBadge({ baseUrl, username }: { baseUrl: string; username: st
       <h2 className="text-base font-bold text-zinc-200">{T.heading}</h2>
       <p className="mt-1 text-xs text-zinc-500">{T.blurb}</p>
 
-      <div className="mt-3">
+      {/* Small badge */}
+      <div className="mt-5">
+        <div className="mb-2 text-xs font-semibold text-zinc-300">{T.badgeTitle}</div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={badgeUrl} alt={T.alt} className="h-5" />
+        <img src={badgeUrl} alt={T.badgeAlt} className="h-5" />
+        <div className="mt-3 flex flex-col gap-3">
+          <Row label={T.markdown} value={snippets.badgeMd} k="badge-md" />
+          <Row label={T.html} value={snippets.badgeHtml} k="badge-html" />
+        </div>
       </div>
 
-      <div className="mt-4 flex flex-col gap-3">
-        <Row label={T.markdown} value={markdown} />
-        <Row label={T.html} value={html} />
+      {/* Big flex card */}
+      <div className="mt-6 border-t border-white/10 pt-5">
+        <div className="mb-2 text-xs font-semibold text-zinc-300">{T.cardTitle}</div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={cardUrl}
+          alt={T.cardAlt}
+          className="w-full max-w-md rounded-xl border border-white/10"
+        />
+        <div className="mt-3 flex flex-col gap-3">
+          <Row label={T.markdown} value={snippets.cardMd} k="card-md" />
+          <Row label={T.html} value={snippets.cardHtml} k="card-html" />
+        </div>
       </div>
     </section>
   );

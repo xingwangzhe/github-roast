@@ -22,6 +22,15 @@ export const TIER_EN: Record<Tier, string> = {
   拉完了: "TRASH",
 };
 
+/** English tier blurbs (for the all-English shareable card). */
+export const TIER_LABEL_EN: Record<Tier, string> = {
+  夯: "Legendary · Hall of Fame",
+  顶级: "Elite · Top-tier dev",
+  人上人: "Solid · Trustworthy",
+  NPC: "Average · Unremarkable",
+  拉完了: "Low-value · Likely farmed",
+};
+
 /** Right-segment background per tier (vivid -500 shades, white text on top). */
 export const BADGE_COLOR: Record<Tier, string> = {
   夯: "#F59E0B",

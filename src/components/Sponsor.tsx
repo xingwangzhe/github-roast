@@ -6,12 +6,9 @@
  * muted text, no banner/gradient.
  */
 
-const SPONSOR = {
-  name: "LobeHub",
-  url: "https://lobehub.com",
-  logo: "/lobehub.png",
-  poweredBy: "Powered by LobeHub",
-};
+import { SPONSOR } from "@/lib/sponsor";
+
+const poweredBy = `Powered by ${SPONSOR.name}`;
 
 /** Sponsor pill. `large` bumps every dimension ~50% for a more prominent slot. */
 export function SponsorPill({ large = false }: { large?: boolean }) {
@@ -31,7 +28,7 @@ export function SponsorPill({ large = false }: { large?: boolean }) {
         className={large ? "h-6 w-6 rounded" : "h-4 w-4 rounded"}
       />
       <span className="text-zinc-500">Powered by</span>
-      <span className="font-semibold text-zinc-200">LobeHub</span>
+      <span className="font-semibold text-zinc-200">{SPONSOR.name}</span>
     </a>
   );
 }
@@ -47,7 +44,7 @@ export function PoweredByLobeHub() {
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={SPONSOR.logo} alt={SPONSOR.name} className="h-4 w-4 rounded" />
-      {SPONSOR.poweredBy}
+      {poweredBy}
     </a>
   );
 }
