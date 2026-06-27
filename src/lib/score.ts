@@ -40,6 +40,61 @@ export function clampScore(value: number): number {
   return round(Math.max(0, Math.min(value, 100)), 2);
 }
 
+/**
+ * Hidden 0-10 spam-PR / bot likelihood (0 = clean, 10 = heavy farming / bot).
+ * Stored in the DB only — never shown publicly. Deterministic from the metrics.
+ *
+ * Designed to separate genuine solo devs from farmers: self-PRs into one's own
+ * ~0-star repo count LESS when those PRs are substantial (real solo-dev workflow)
+ * and MORE when they are trivial (count padding). Templated PR flooding (one-repo
+ * AI batches) is the strongest single signal.
+ */
+export function spamBotScore(m: RawMetrics): number {
+  let s = 0;
+
+  // 1. Templated PR flooding — strongest bot signal (3..7).
+  if (m.pr_flood_suspect ?? false) {
+    const share = m.top_repo_pr_share ?? 0;
+    const templated = m.templated_pr_ratio ?? 0;
+    const sev = Math.max(
+      0,
+      Math.min(1, ((share - 0.5) / 0.5) * 0.5 + ((templated - 0.5) / 0.5) * 0.5),
+    );
+    s += 3 + 4 * sev;
+  }
+
+  const mergedSample = m.recent_merged_pr_sample ?? 0;
+  const trivialRatio = mergedSample > 0 ? (m.recent_trivial_pr_count ?? 0) / mergedSample : 0;
+
+  // 2. Trivial-PR farming (0..3).
+  if (mergedSample >= 8 && trivialRatio > 0.4) {
+    s += Math.min(3, ((trivialRatio - 0.4) / 0.5) * 3);
+  }
+
+  // 3. Self-PR into own ~0-star repos (0..3), weighted DOWN when those self-PRs
+  //    are substantial (real solo dev) rather than trivial (padding).
+  const selfRatio = m.self_pr_farm_ratio ?? 0;
+  if (mergedSample >= 8 && selfRatio > 0.5) {
+    const w = 0.4 + 0.6 * Math.min(1, trivialRatio / 0.3);
+    s += selfRatio * 3 * w;
+  }
+
+  // 4. High PR rejection (0..2).
+  const decided = m.merged_pr_count + (m.closed_unmerged_pr_count ?? 0);
+  if (decided >= 10 && (m.pr_rejection_rate ?? 0) > 0.5) {
+    s += Math.min(2, (((m.pr_rejection_rate ?? 0) - 0.5) / 0.5) * 2);
+  }
+
+  // 5. Other classic farm/bot red flags.
+  if (m.following > 1000 && m.followers < m.following * 0.3) s += 2; // follow farming
+  if (m.account_age_years < 1 && m.public_repos > 30) s += 1.5; // new-account mass repos
+  const fetched = Math.max(m.fetched_repo_count, 1);
+  if (m.fork_repo_count / fetched > 0.7 && m.nonempty_original_repo_count <= 2) s += 1.5; // mostly forks
+  if (!m.bio && m.followers < 3 && m.total_stars === 0 && m.merged_pr_count < 2) s += 1; // ghost
+
+  return Math.round(Math.max(0, Math.min(s, 10)) * 10) / 10;
+}
+
 /** Map a final score to its tier label. Shared by the scorer and the AI-adjust step. */
 export function tierFor(final: number): { tier: Tier; tier_label: string } {
   if (final >= 90) return { tier: "夯", tier_label: "封神 · 殿堂级标杆" };

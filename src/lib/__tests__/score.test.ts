@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeFloodSignals, isEcosystemImpactPr } from "../github";
-import { logRatio, score, tierFor } from "../score";
+import { logRatio, score, spamBotScore, tierFor } from "../score";
 import type { RawMetrics, RecentPr } from "../types";
 import fixtures from "./score-fixtures.json";
 
@@ -104,6 +104,65 @@ describe("spam-PR red flags", () => {
         "high_pr_rejection",
       ),
     ).toBe(false); // decided 7 < 10
+  });
+});
+
+describe("spamBotScore (hidden 0-10 farming/bot likelihood)", () => {
+  it("is ~0 for a clean account", () => {
+    expect(spamBotScore(NEUTRAL)).toBeLessThanOrEqual(0.5);
+  });
+
+  it("stays LOW for a genuine solo dev (self-PRs but substantial, not trivial)", () => {
+    // iamPulakesh-like: all PRs into own 0-star repo, but real engineering (few trivial).
+    const m: RawMetrics = {
+      ...NEUTRAL,
+      recent_merged_pr_sample: 20,
+      recent_trivial_pr_count: 1, // substantial PRs
+      self_pr_farm_ratio: 1,
+      self_pr_farm_count: 20,
+      total_stars: 0,
+      max_stars: 0,
+    };
+    expect(spamBotScore(m)).toBeLessThanOrEqual(2);
+  });
+
+  it("is HIGH for trivial self-PR farming (AsperforMias-like)", () => {
+    const m: RawMetrics = {
+      ...NEUTRAL,
+      recent_merged_pr_sample: 17,
+      recent_trivial_pr_count: 13, // mostly trivial
+      self_pr_farm_ratio: 0.85,
+      self_pr_farm_count: 15,
+      total_stars: 0,
+    };
+    expect(spamBotScore(m)).toBeGreaterThanOrEqual(4);
+  });
+
+  it("is HIGH for templated PR flooding (cqjjjzr-like)", () => {
+    const m: RawMetrics = {
+      ...NEUTRAL,
+      pr_flood_suspect: true,
+      recent_pr_sample: 30,
+      top_repo_pr_share: 1,
+      templated_pr_ratio: 0.67,
+    };
+    expect(spamBotScore(m)).toBeGreaterThanOrEqual(5);
+  });
+
+  it("caps at 10 for an everything-bot", () => {
+    const m: RawMetrics = {
+      ...NEUTRAL,
+      pr_flood_suspect: true,
+      recent_pr_sample: 30,
+      top_repo_pr_share: 1,
+      templated_pr_ratio: 1,
+      recent_merged_pr_sample: 20,
+      recent_trivial_pr_count: 20,
+      self_pr_farm_ratio: 1,
+      following: 5000,
+      followers: 10,
+    };
+    expect(spamBotScore(m)).toBe(10);
   });
 });
 

@@ -9,7 +9,7 @@ import {
   getCachedScan,
   setCachedRoast,
 } from "@/lib/redis";
-import { clampScore, tierFor } from "@/lib/score";
+import { clampScore, spamBotScore, tierFor } from "@/lib/score";
 import type { RoastMeta, ScanResult, Tags } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -135,6 +135,7 @@ async function computeMeta(
       final_score: adjusted,
       tier,
       tags,
+      bot_score: spamBotScore(scan.metrics),
       scanned_at: Date.now(),
     });
   }

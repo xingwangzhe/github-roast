@@ -51,6 +51,7 @@ function ensureSchema(db: Client): Promise<void> {
              final_score  REAL NOT NULL,
              tier         TEXT NOT NULL,
              tags         TEXT,
+             bot_score    REAL,
              hidden       INTEGER NOT NULL DEFAULT 0,
              scanned_at   INTEGER NOT NULL
            )`,
@@ -58,11 +59,13 @@ function ensureSchema(db: Client): Promise<void> {
         ],
         "write",
       );
-      // Migration for tables created before the tags column existed.
-      try {
-        await db.execute("ALTER TABLE scores ADD COLUMN tags TEXT");
-      } catch {
-        // column already exists — ignore
+      // Migrations for tables created before these columns existed.
+      for (const col of ["tags TEXT", "bot_score REAL"]) {
+        try {
+          await db.execute(`ALTER TABLE scores ADD COLUMN ${col}`);
+        } catch {
+          // column already exists — ignore
+        }
       }
     })().catch((e) => {
       schemaReady = null; // allow retry on next call
@@ -80,6 +83,8 @@ export interface ScoreEntry {
   final_score: number;
   tier: Tier;
   tags: Tags;
+  /** Hidden 0-10 spam-PR / bot likelihood — stored, never returned to clients. */
+  bot_score: number;
   scanned_at: number;
 }
 
@@ -101,8 +106,8 @@ export async function recordScore(entry: ScoreEntry): Promise<void> {
     await ensureSchema(db);
     await db.execute({
       sql: `INSERT INTO scores
-              (username, display_name, avatar_url, profile_url, final_score, tier, tags, scanned_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              (username, display_name, avatar_url, profile_url, final_score, tier, tags, bot_score, scanned_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(username) DO UPDATE SET
               display_name = excluded.display_name,
               avatar_url   = excluded.avatar_url,
@@ -110,6 +115,7 @@ export async function recordScore(entry: ScoreEntry): Promise<void> {
               final_score  = excluded.final_score,
               tier         = excluded.tier,
               tags         = excluded.tags,
+              bot_score    = excluded.bot_score,
               scanned_at   = excluded.scanned_at`,
       args: [
         entry.username.toLowerCase(),
@@ -119,6 +125,7 @@ export async function recordScore(entry: ScoreEntry): Promise<void> {
         entry.final_score,
         entry.tier,
         JSON.stringify(entry.tags ?? EMPTY_TAGS),
+        entry.bot_score,
         entry.scanned_at,
       ],
     });
