@@ -99,6 +99,19 @@ export function spamBotScore(m: RawMetrics): number {
   return Math.round(Math.max(0, Math.min(s, 10)) * 10) / 10;
 }
 
+export function docLikePrVolumeDiscount(m: RawMetrics, prVolume: number): number {
+  const sample = m.recent_merged_pr_sample ?? 0;
+  const ratio =
+    m.recent_doc_like_pr_ratio ??
+    (sample > 0 && m.recent_doc_like_pr_count !== undefined
+      ? m.recent_doc_like_pr_count / sample
+      : 0);
+  if (sample < 20 || ratio < 0.55) return 0;
+
+  const severity = Math.max(0, Math.min(1, (ratio - 0.55) / 0.075));
+  return Math.min(prVolume * 0.35, 1.5 + severity * 2.0);
+}
+
 /** Map a final score to its tier label. Shared by the scorer and the AI-adjust step. */
 export function tierFor(final: number): { tier: Tier; tier_label: string } {
   if (final >= 90) return { tier: "夯", tier_label: "封神 · 殿堂级标杆" };
@@ -137,7 +150,8 @@ export function score(m: RawMetrics): Scoring {
   // 3. Contribution Quality (27) — merged-PR volume, acceptance, issue engagement.
   // PRs into one's own projects count normally (solo-dev work / learning / testing
   // is legitimate); spam is judged separately by the external-trivial / flood flags.
-  const prVolume = logRatio(m.merged_pr_count, 200) * 16;
+  const prVolumeRaw = logRatio(m.merged_pr_count, 200) * 16;
+  const prVolume = Math.max(0, prVolumeRaw - docLikePrVolumeDiscount(m, prVolumeRaw));
   let acceptance: number;
   const acceptanceTotal = Math.max(
     m.merged_pr_count,
@@ -158,7 +172,13 @@ export function score(m: RawMetrics): Scoring {
   // creator/maintainer value.
   const prestige = logRatio(m.max_impact_repo_stars, 100000) * 9;
   const depth = Math.min(m.impact_depth_raw / 8.0, 1.0) * 11;
-  sub.ecosystem_impact = round(prestige + depth, 1);
+  const ecosystemRaw = prestige + depth;
+  sub.ecosystem_impact = round(
+    m.impact_quality_cap === undefined
+      ? ecosystemRaw
+      : Math.min(ecosystemRaw, m.impact_quality_cap),
+    1,
+  );
 
   // 5. Community Influence (8)
   const followerPts = logRatio(m.followers, 2000) * 5;

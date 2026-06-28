@@ -23,6 +23,7 @@ export interface RecentPr {
   churn: number;
   changed_files: number;
   trivial: boolean;
+  files?: string[];
 }
 
 /**
@@ -66,10 +67,17 @@ export interface RawMetrics {
   days_since_last_activity: number | null;
   recent_merged_pr_sample: number;
   recent_trivial_pr_count: number;
+  recent_doc_like_pr_count?: number;
+  recent_doc_like_pr_ratio?: number;
   external_trivial_pr_count: number;
   max_impact_repo_stars: number;
   impact_pr_count: number;
   impact_depth_raw: number;
+  impact_quality_cap?: number;
+  verified_impact_pr_count?: number;
+  core_impact_pr_count?: number;
+  doc_like_impact_pr_count?: number;
+  unverified_impact_pr_count?: number;
   // All-time per-repo impact aggregates (commits + PRs into popular repos).
   // Optional so existing RawMetrics literals / fixtures stay valid.
   impact_repo_count?: number;
@@ -127,6 +135,8 @@ export interface ScanResult {
   /** Popular repos the user contributed to all-time (PRs + commits). Optional
    * for backward compatibility with cached scans written before this field. */
   impact_repos?: ImpactRepo[];
+  /** Verified popular-repo PR samples with file paths, for LLM qualitative review. */
+  verified_impact_prs?: RecentPr[];
   scoring: Scoring;
 }
 
