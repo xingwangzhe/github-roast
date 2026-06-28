@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { notFound } from "next/navigation";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
@@ -23,6 +24,10 @@ const geistMono = Geist_Mono({
 
 /** HTML `lang` attribute per locale (zh keeps its region tag for SEO). */
 const HTML_LANG: Record<string, string> = { zh: "zh-CN", en: "en" };
+
+/** Google Analytics 4 measurement ID (override via env in other environments). */
+const GA_MEASUREMENT_ID =
+  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ?? "G-GHXRYBFZEN";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -76,6 +81,19 @@ export default async function LocaleLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* Google tag (gtag.js) — loaded on every page via the root layout */}
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+          strategy="afterInteractive"
+        />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${GA_MEASUREMENT_ID}');
+          `}
+        </Script>
         <JsonLd data={websiteJsonLd({ name: tMeta("siteName"), description: tMeta("description") })} />
         <NextIntlClientProvider>
           <Navbar />
