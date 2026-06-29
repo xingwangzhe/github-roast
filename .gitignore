@@ -53,4 +53,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-.env.playwright-cli/
+.env
