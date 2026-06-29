@@ -63,14 +63,39 @@ export function defaultLlmConfig(): LlmConfig | null {
  * Stream a chat completion, yielding text deltas. Throws {@link LlmQuotaError}
  * on 401/402/429 so the caller can prompt the user for their own key.
  */
+/** Thrown when the provider stalls past a timeout — distinct from a hard error
+ *  so callers can treat it as a transient (retryable) failure, not a bad key. */
+export class LlmTimeoutError extends Error {}
+
+// Defaults: a slow flash model still returns its first byte well under 30s, and
+// streams tokens far faster than 30s apart. These bound a stalled/queued upstream
+// (the real prod failure mode) so the request fails fast instead of hanging the
+// whole serverless function until the platform 504s it.
+const CONNECT_TIMEOUT_MS = 30_000;
+const IDLE_TIMEOUT_MS = 30_000;
+
 export async function* chatStream(
   config: LlmConfig,
   messages: ChatMessage[],
-  opts?: { temperature?: number },
+  opts?: { temperature?: number; connectTimeoutMs?: number; idleTimeoutMs?: number },
 ): AsyncGenerator<string> {
   const base = config.baseURL.replace(/\/$/, "");
+  const connectMs = opts?.connectTimeoutMs ?? CONNECT_TIMEOUT_MS;
+  const idleMs = opts?.idleTimeoutMs ?? IDLE_TIMEOUT_MS;
+
+  // One controller for the whole exchange; a single timer is re-armed before each
+  // await so it measures only the provider's wait, not our own processing time.
+  const ctrl = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = (ms: number) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => ctrl.abort(), ms);
+  };
+  const disarm = () => clearTimeout(timer);
+
   let res: Response;
   try {
+    arm(connectMs);
     res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: {
@@ -86,16 +111,21 @@ export async function* chatStream(
         stream: true,
         temperature: opts?.temperature ?? 0.85,
       }),
+      signal: ctrl.signal,
     });
   } catch (e) {
+    disarm();
+    if (ctrl.signal.aborted) throw new LlmTimeoutError(`LLM connect timed out after ${connectMs}ms`);
     throw new Error(`LLM request failed: ${(e as Error).message}`);
   }
 
   if (res.status === 401 || res.status === 402 || res.status === 429) {
+    disarm();
     const body = await res.text().catch(() => "");
     throw new LlmQuotaError(body || `Provider returned ${res.status}`, res.status);
   }
   if (!res.ok || !res.body) {
+    disarm();
     const body = await res.text().catch(() => "");
     throw new Error(`LLM error ${res.status}: ${body.slice(0, 300)}`);
   }
@@ -103,26 +133,41 @@ export async function* chatStream(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const data = trimmed.slice(5).trim();
-      if (data === "[DONE]") return;
+  try {
+    while (true) {
+      arm(idleMs);
+      let chunk: ReadableStreamReadResult<Uint8Array>;
       try {
-        const json = JSON.parse(data) as {
-          choices?: { delta?: { content?: string } }[];
-        };
-        const delta = json.choices?.[0]?.delta?.content;
-        if (delta) yield delta;
-      } catch {
-        // ignore keep-alive / partial frames
+        chunk = await reader.read();
+      } catch (e) {
+        if (ctrl.signal.aborted) throw new LlmTimeoutError(`LLM stream stalled (>${idleMs}ms)`);
+        throw e;
+      }
+      disarm();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const data = trimmed.slice(5).trim();
+        if (data === "[DONE]") return;
+        try {
+          const json = JSON.parse(data) as {
+            choices?: { delta?: { content?: string } }[];
+          };
+          const delta = json.choices?.[0]?.delta?.content;
+          if (delta) yield delta;
+        } catch {
+          // ignore keep-alive / partial frames
+        }
       }
     }
+  } finally {
+    disarm();
+    // Abort the underlying connection if the consumer stops pulling early (client
+    // disconnect) so we don't leak a half-read upstream stream.
+    if (!ctrl.signal.aborted) ctrl.abort();
   }
 }

@@ -21,6 +21,11 @@ import type { RoastJudgeResult, RoastLine, RoastMeta, ScanResult, Tags, Tier } f
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Two sequential LLM calls (judge → roast) plus the streamed report. The platform
+// clamps this to the plan max; without it a cold request can hit the default
+// (~10–15s) limit mid-generation and 504. The llm.ts idle timeout still bounds a
+// stalled upstream well inside this ceiling.
+export const maxDuration = 60;
 
 /** Response header carrying the AI-adjusted score (base64'd JSON; it contains CJK). */
 export const ROAST_META_HEADER = "X-Roast-Meta";
