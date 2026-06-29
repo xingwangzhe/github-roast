@@ -13,7 +13,7 @@ import type { RoastLine, Tags } from "@/lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const PAPER_META_HEADER = "X-Paper-Meta";
+const PAPER_META_HEADER = "X-Paper-Meta";
 // Lower temperature than the playful GitHub roast — the score must be stable.
 const PAPER_TEMPERATURE = 0.4;
 
