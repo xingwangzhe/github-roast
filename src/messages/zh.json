@@ -86,6 +86,12 @@
     "zh": "中文",
     "en": "EN"
   },
+  "themeSwitch": {
+    "label": "切换主题",
+    "light": "亮色主题",
+    "dark": "暗色主题",
+    "auto": "跟随系统"
+  },
   "repoLink": {
     "label": "开源",
     "title": "源码与评分算法均开源 · 在 GitHub 查看"
@@ -206,6 +212,8 @@
     "blurb": "复制下面任意一段贴进 Profile README，分数会自动保持最新，点击图片跳转你的详情页。",
     "badgeTitle": "小徽章",
     "cardTitle": "炫耀大卡",
+    "cardDark": "暗色大卡",
+    "cardLight": "亮色大卡",
     "markdown": "Markdown",
     "html": "HTML",
     "copy": "复制",

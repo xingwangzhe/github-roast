@@ -86,6 +86,12 @@
     "zh": "中文",
     "en": "EN"
   },
+  "themeSwitch": {
+    "label": "Switch theme",
+    "light": "Light theme",
+    "dark": "Dark theme",
+    "auto": "Use system theme"
+  },
   "repoLink": {
     "label": "Source",
     "title": "Source code & scoring algorithm are open source · View on GitHub"
@@ -206,6 +212,8 @@
     "blurb": "Copy any snippet below into your Profile README. The score stays up to date automatically, and the image links to your detail page.",
     "badgeTitle": "Badge",
     "cardTitle": "Flex card",
+    "cardDark": "Dark card",
+    "cardLight": "Light card",
     "markdown": "Markdown",
     "html": "HTML",
     "copy": "Copy",
