@@ -28,7 +28,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /** Response header carrying the AI-adjusted score (base64'd JSON; it contains CJK). */
-export const ROAST_META_HEADER = "X-Roast-Meta";
+const ROAST_META_HEADER = "X-Roast-Meta";
 
 const USERNAME_RE = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/;
 const EMPTY_ROAST_LINE: RoastLine = { zh: "", en: "" };
