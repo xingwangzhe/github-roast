@@ -81,6 +81,13 @@
     "signIn": "用 GitHub 登录",
     "signOut": "登出"
   },
+  "loginNudge": {
+    "title": "🔥 登录解锁更多玩法",
+    "body": "用 GitHub 登录,投票、反应都给你留着,体验更顺手。",
+    "signIn": "用 GitHub 登录",
+    "dismiss": "以后再说",
+    "close": "关闭"
+  },
   "langSwitch": {
     "label": "切换语言",
     "zh": "中文",

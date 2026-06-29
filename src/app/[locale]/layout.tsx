@@ -7,7 +7,9 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { routing } from "@/i18n/routing";
+import { auth, authConfigured, signIn } from "@/lib/auth";
 import { Navbar } from "@/components/Navbar";
+import { LoginNudge } from "@/components/LoginNudge";
 import { PoweredByLobeHub } from "@/components/Sponsor";
 import { JsonLd, websiteJsonLd } from "@/components/JsonLd";
 import { SITE_URL } from "@/lib/site";
@@ -92,10 +94,19 @@ export default async function LocaleLayout({
   setRequestLocale(locale);
   const tMeta = await getTranslations({ locale, namespace: "meta" });
 
+  // Show the subtle GitHub-login nudge only when OAuth is configured and the
+  // visitor is signed out. `auth()` already runs in the navbar, so reading it
+  // here adds no extra dynamic cost.
+  const session = authConfigured() ? await auth() : null;
+  const showLoginNudge = authConfigured() && !session?.user;
+
   return (
     <html
       lang={HTML_LANG[locale] ?? "zh-CN"}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // The theme-init script below sets data-theme / color-scheme on <html>
+      // before hydration, so the server markup intentionally differs here.
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
         <Script id="theme-init" strategy="beforeInteractive">
@@ -121,6 +132,14 @@ export default async function LocaleLayout({
           <footer className="flex w-full justify-center py-6">
             <PoweredByLobeHub />
           </footer>
+          {showLoginNudge ? (
+            <LoginNudge
+              signInAction={async () => {
+                "use server";
+                await signIn("github");
+              }}
+            />
+          ) : null}
           <Analytics />
           <SpeedInsights />
         </NextIntlClientProvider>

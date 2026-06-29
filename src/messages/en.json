@@ -81,6 +81,13 @@
     "signIn": "Sign in with GitHub",
     "signOut": "Sign out"
   },
+  "loginNudge": {
+    "title": "🔥 Sign in to unlock more",
+    "body": "Sign in with GitHub to keep your votes and reactions — and get a smoother experience.",
+    "signIn": "Sign in with GitHub",
+    "dismiss": "Maybe later",
+    "close": "Close"
+  },
   "langSwitch": {
     "label": "Switch language",
     "zh": "中文",
