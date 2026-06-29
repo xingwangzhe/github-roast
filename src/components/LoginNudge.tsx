@@ -16,8 +16,9 @@ const EXIT_MS = 300;
  * Subtle GitHub-login nudge for signed-out visitors. Mounted from the layout
  * only when OAuth is configured and there is no session, so this component never
  * has to know about auth — it just owns the timing, the slide animation, and the
- * "don't nag me again" snooze. Desktop: bottom-right floating card. Mobile: a
- * full-width card sliding up from the bottom. Styling reuses the same zinc/white
+ * "don't nag me again" snooze. Sits at the top-right (just under the sticky
+ * navbar) on desktop, full-width under the navbar on mobile, sliding down into
+ * view. Styling reuses the same zinc/white
  * utility classes as the rest of the app, which `globals.css` remaps for the
  * light theme, so the card adapts automatically.
  *
@@ -62,32 +63,32 @@ export function LoginNudge({ signInAction }: { signInAction: () => Promise<void>
     <div
       role="dialog"
       aria-label={t("title")}
-      className={`fixed bottom-3 inset-x-3 z-50 sm:bottom-4 sm:right-4 sm:left-auto sm:inset-x-auto sm:w-80 transition-all duration-300 ease-out ${
-        visible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"
+      className={`fixed inset-x-3 top-[4.5rem] z-50 sm:inset-x-auto sm:left-auto sm:right-4 sm:top-[4.5rem] sm:w-[26rem] transition-all duration-300 ease-out ${
+        visible ? "translate-y-0 opacity-100" : "-translate-y-6 opacity-0"
       }`}
     >
-      <div className="relative rounded-2xl border border-white/10 bg-zinc-900/95 p-4 shadow-2xl backdrop-blur">
+      <div className="relative rounded-2xl border border-orange-400/25 bg-zinc-900/95 p-5 shadow-2xl ring-1 ring-orange-500/10 backdrop-blur">
         <button
           type="button"
           onClick={dismiss}
           aria-label={t("close")}
-          className="absolute right-2.5 top-2.5 rounded-full p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-300"
+          className="absolute right-3 top-3 rounded-full p-1 text-zinc-500 hover:bg-white/10 hover:text-zinc-300"
         >
-          <svg viewBox="0 0 16 16" aria-hidden className="h-4 w-4 fill-current">
+          <svg viewBox="0 0 16 16" aria-hidden className="h-5 w-5 fill-current">
             <path d="M4.3 4.3a1 1 0 0 1 1.4 0L8 6.6l2.3-2.3a1 1 0 1 1 1.4 1.4L9.4 8l2.3 2.3a1 1 0 0 1-1.4 1.4L8 9.4l-2.3 2.3a1 1 0 0 1-1.4-1.4L6.6 8 4.3 5.7a1 1 0 0 1 0-1.4Z" />
           </svg>
         </button>
 
-        <h3 className="pr-6 text-sm font-bold text-zinc-100">{t("title")}</h3>
-        <p className="mt-1 text-xs leading-relaxed text-zinc-400">{t("body")}</p>
+        <h3 className="pr-7 text-lg font-bold text-zinc-100">{t("title")}</h3>
+        <p className="mt-1.5 text-sm leading-relaxed text-zinc-400">{t("body")}</p>
 
-        <div className="mt-3 flex items-center gap-3">
+        <div className="mt-4 flex items-center gap-3">
           <form action={signInAction}>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 rounded-full bg-orange-600 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-orange-500"
+              className="inline-flex items-center gap-2 rounded-full bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-500"
             >
-              <svg viewBox="0 0 16 16" aria-hidden className="h-4 w-4 fill-current">
+              <svg viewBox="0 0 16 16" aria-hidden className="h-[18px] w-[18px] fill-current">
                 <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
               </svg>
               {t("signIn")}
