@@ -92,11 +92,25 @@ export interface ChatEvent {
 export async function* chatStreamEvents(
   config: LlmConfig,
   messages: ChatMessage[],
-  opts?: { temperature?: number; connectTimeoutMs?: number; idleTimeoutMs?: number },
+  opts?: {
+    temperature?: number;
+    connectTimeoutMs?: number;
+    idleTimeoutMs?: number;
+    /**
+     * Absolute wall-clock deadline (epoch ms) for the whole exchange. The idle
+     * timeout only bounds GAPS between tokens — a reasoning model that streams
+     * chain-of-thought deltas continuously never trips it, so without a total
+     * budget a long "thinking" run can exceed the platform's function ceiling
+     * and 504. Each arm() is clamped to the remaining budget; past it we abort
+     * (surfacing as {@link LlmTimeoutError}) so the caller fails fast and clean.
+     */
+    deadlineMs?: number;
+  },
 ): AsyncGenerator<ChatEvent> {
   const base = config.baseURL.replace(/\/$/, "");
   const connectMs = opts?.connectTimeoutMs ?? CONNECT_TIMEOUT_MS;
   const idleMs = opts?.idleTimeoutMs ?? IDLE_TIMEOUT_MS;
+  const deadlineMs = opts?.deadlineMs;
 
   // One controller for the whole exchange; a single timer is re-armed before each
   // await so it measures only the provider's wait, not our own processing time.
@@ -104,7 +118,14 @@ export async function* chatStreamEvents(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const arm = (ms: number) => {
     clearTimeout(timer);
-    timer = setTimeout(() => ctrl.abort(), ms);
+    // Never wait past the overall deadline, even if the provider keeps the
+    // stream alive with steady reasoning tokens.
+    const eff = deadlineMs !== undefined ? Math.min(ms, deadlineMs - Date.now()) : ms;
+    if (eff <= 0) {
+      ctrl.abort();
+      return;
+    }
+    timer = setTimeout(() => ctrl.abort(), eff);
   };
   const disarm = () => clearTimeout(timer);
 

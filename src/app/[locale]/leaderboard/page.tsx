@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
-import { connection } from "next/server";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import { Leaderboard } from "@/components/Leaderboard";
 import { JsonLd, leaderboardJsonLd } from "@/components/JsonLd";
-import { getLeaderboard } from "@/lib/db";
+import { getLeaderboardCached } from "@/lib/leaderboard";
 import {
   LEADERBOARD_WINDOW_OPTIONS,
   type LeaderboardWindow,
@@ -67,7 +66,6 @@ export default async function LeaderboardPage({
     const qs = search.toString();
     return qs ? `/leaderboard?${qs}` : "/leaderboard";
   };
-  await connection();
   setRequestLocale(locale);
   const t = await getTranslations("leaderboard");
   const viewTitle =
@@ -94,7 +92,12 @@ export default async function LeaderboardPage({
   // Structured data only for the canonical score ranking — the directory's main
   // "top developers" list. Heat is a sort variant behind query params, so
   // emitting one ItemList keeps the markup unambiguous for crawlers.
-  const rankingEntries = view === "score" ? await getLeaderboard(50, undefined, timeWindow) : [];
+  // Shares the Redis cache key with <Leaderboard> below (same score+window), so
+  // this JSON-LD read is a cache hit, not a second DB query.
+  const rankingEntries =
+    view === "score"
+      ? (await getLeaderboardCached("score", timeWindow)).entries.slice(0, 50)
+      : [];
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-5 py-14 sm:py-20">

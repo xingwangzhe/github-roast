@@ -21,12 +21,14 @@ import type { RoastJudgeResult, RoastLine, RoastMeta, ScanResult, Tags, Tier } f
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// Two sequential LLM calls (judge → roast) plus the streamed report, and the
-// default model is a reasoning model that spends 10–25s on chain-of-thought
-// before any visible content. Give the function generous headroom so a slow
-// account never hits the platform ceiling mid-generation and 504s; the llm.ts
-// idle timeout (30s) still bounds a genuinely stalled upstream well inside this.
-export const maxDuration = 300;
+// Two sequential LLM calls (judge → roast) plus the streamed report. The default
+// model is a reasoning model that spends 10–25s on chain-of-thought before any
+// visible content, and a heavy account's two passes legitimately run ~60–120s.
+// We cap the function at 120s (fail-fast: a genuinely stuck roast releases its
+// slot quickly instead of hogging it) and bound the LLM passes a touch under
+// that (`llmDeadlineMs`) so we fail gracefully here (roast_failed) instead of the
+// platform 504'ing. Keep the two in sync: the inner budget MUST stay below this.
+export const maxDuration = 120;
 
 /** Response header carrying the AI-adjusted score (base64'd JSON; it contains CJK). */
 export const ROAST_META_HEADER = "X-Roast-Meta";
@@ -489,6 +491,13 @@ export async function POST(req: NextRequest) {
       // a curated stage label plus elapsed seconds, throttled so reasoning's
       // hundreds of deltas don't spam the wire.
       const t0 = Date.now();
+      // Hard wall-clock budget for the LLM passes, kept ~15s under the 120s
+      // function ceiling (leaving room for meta compute + caching + margin). The
+      // default reasoning model streams chain-of-thought continuously, so the
+      // per-token idle timeout never fires on a long think; this caps the TWO
+      // passes combined so a slow account fails gracefully here (roast_failed)
+      // instead of the platform 504'ing the whole function.
+      const llmDeadlineMs = t0 + 105_000;
       let lastBeat = 0;
       const beat = (label: string, force = false) => {
         const now = Date.now();
@@ -512,7 +521,9 @@ export async function POST(req: NextRequest) {
       try {
         beat(calibrating, true);
         let judgeText = "";
-        for await (const ev of chatStreamEvents(config, buildRoastJudgeMessages(scan, lang))) {
+        for await (const ev of chatStreamEvents(config, buildRoastJudgeMessages(scan, lang), {
+          deadlineMs: llmDeadlineMs,
+        })) {
           if (ev.type === "content") {
             judgeText += ev.text;
             if (judgeText.length >= 12000) break;
@@ -532,7 +543,9 @@ export async function POST(req: NextRequest) {
       // 2) Savage writer pass. Read the leading control lines (@@ADJUST@@ /
       // @@TAGS@@ / @@ROAST@@) up to the report heading; reasoning → writing beat.
       beat(writing, true);
-      const events = chatStreamEvents(config, buildRoastMessages(scan, lang, judge));
+      const events = chatStreamEvents(config, buildRoastMessages(scan, lang, judge), {
+        deadlineMs: llmDeadlineMs,
+      });
       let head = "";
       try {
         while (!/(^|\n)\s*##\s/.test(head) && head.length < 2000) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { signIn } from "next-auth/react";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
@@ -21,14 +22,18 @@ const EXIT_MS = 300;
  * view. The outer card has a dedicated theme hook so its translucent panel can
  * stay dark in dark mode and become a real light surface in light mode.
  *
- * `signInAction` is a server action passed down from the layout (`signIn("github")`).
+ * Sign-in runs client-side via `next-auth/react`'s `signIn("github")`. Visibility
+ * is self-contained: `configured` gates OAuth availability, and we probe `/api/me`
+ * so the nudge never shows to an already-signed-in visitor — the layout no longer
+ * reads the session server-side (that would opt every page out of CDN caching).
  */
-export function LoginNudge({ signInAction }: { signInAction: () => Promise<void> }) {
+export function LoginNudge({ configured }: { configured: boolean }) {
   const t = useTranslations("loginNudge");
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    if (!configured) return;
     try {
       const raw = localStorage.getItem(DISMISS_KEY);
       if (raw) {
@@ -38,13 +43,32 @@ export function LoginNudge({ signInAction }: { signInAction: () => Promise<void>
     } catch {
       // localStorage unavailable (private mode etc.) — just show the nudge.
     }
-    const timer = setTimeout(() => {
-      setMounted(true);
-      // Two frames so the initial (hidden) styles paint before we flip to visible.
-      requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
-    }, SHOW_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, []);
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Only nudge signed-out visitors; skip the prompt once a session exists.
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((d: { user: unknown }) => {
+        if (!alive || d?.user) return;
+        timer = setTimeout(() => {
+          setMounted(true);
+          // Two frames so the initial (hidden) styles paint before we flip to visible.
+          requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
+        }, SHOW_DELAY_MS);
+      })
+      .catch(() => {
+        // Probe failed — fall back to showing the nudge (signed-out is the norm).
+        if (!alive) return;
+        timer = setTimeout(() => {
+          setMounted(true);
+          requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
+        }, SHOW_DELAY_MS);
+      });
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [configured]);
 
   const dismiss = () => {
     try {
@@ -82,17 +106,16 @@ export function LoginNudge({ signInAction }: { signInAction: () => Promise<void>
         <p className="mt-1.5 text-sm leading-relaxed text-zinc-400">{t("body")}</p>
 
         <div className="mt-4 flex items-center gap-3">
-          <form action={signInAction}>
-            <button
-              type="submit"
-              className="inline-flex items-center gap-2 rounded-full bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-500"
-            >
-              <svg viewBox="0 0 16 16" aria-hidden className="h-[18px] w-[18px] fill-current">
-                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-              </svg>
-              {t("signIn")}
-            </button>
-          </form>
+          <button
+            type="button"
+            onClick={() => signIn("github")}
+            className="inline-flex items-center gap-2 rounded-full bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-500"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden className="h-[18px] w-[18px] fill-current">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+            </svg>
+            {t("signIn")}
+          </button>
           <button
             type="button"
             onClick={dismiss}

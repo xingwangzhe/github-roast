@@ -1,10 +1,6 @@
 import { getTranslations } from "next-intl/server";
-import {
-  getHeatLeaderboard,
-  getLeaderboard,
-  getTrendingLeaderboard,
-  type LeaderboardWindow,
-} from "@/lib/db";
+import type { LeaderboardWindow } from "@/lib/db";
+import { getLeaderboardCached } from "@/lib/leaderboard";
 import {
   LeaderboardClient,
   type LeaderboardLabels,
@@ -37,13 +33,14 @@ export async function Leaderboard({
     heatTitle: t("heatTitle"),
   };
 
-  const [trendingEntries, scoreEntries, heatEntries] = await Promise.all([
-    initialView === "trending"
-      ? getTrendingLeaderboard(500, undefined, timeWindow)
-      : Promise.resolve([]),
-    initialView === "score" ? getLeaderboard(500, undefined, timeWindow) : Promise.resolve([]),
-    initialView === "heat" ? getHeatLeaderboard(500, undefined, timeWindow) : Promise.resolve([]),
-  ]);
+  // Route the initial paint through the same Redis cache-aside the /api route
+  // uses (shared key per view+window), so the expensive 500-row triple JOIN runs
+  // at most once per TTL instead of on every leaderboard page visit. Only the
+  // initialView is fetched; the client lazily loads the other views on demand.
+  const { entries } = await getLeaderboardCached(initialView, timeWindow);
+  const trendingEntries = initialView === "trending" ? entries : [];
+  const scoreEntries = initialView === "score" ? entries : [];
+  const heatEntries = initialView === "heat" ? entries : [];
 
   return (
     <LeaderboardClient

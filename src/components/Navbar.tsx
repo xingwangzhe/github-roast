@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
+import { authConfigured } from "@/lib/auth";
 import { NAV_ITEMS } from "@/config/nav";
 import { NavLinks } from "./NavLinks";
 import { NavAuth } from "./NavAuth";
@@ -22,6 +23,7 @@ import { BrandMark } from "./BrandMark";
 export async function Navbar() {
   const tNav = await getTranslations("nav");
   const tRepo = await getTranslations("repoLink");
+  const oauthConfigured = authConfigured();
 
   const repoLink = (
     <a
@@ -58,7 +60,7 @@ export async function Navbar() {
         {/* Right cluster */}
         <div className="ml-auto flex items-center gap-2">
           <div className="hidden items-center gap-2 sm:flex">
-            <NavAuth />
+            <NavAuth configured={oauthConfigured} />
             <ThemeToggle />
             <LanguageSwitcher />
             {repoLink}
@@ -67,7 +69,7 @@ export async function Navbar() {
           {/* Mobile: hamburger + drawer. NavAuth (server) + repo link handed in
               as props; MobileMenu renders its own client islands so a link tap
               can close the drawer. */}
-          <MobileMenu auth={<NavAuth />} repoLink={repoLink} />
+          <MobileMenu auth={<NavAuth configured={oauthConfigured} />} repoLink={repoLink} />
         </div>
       </div>
     </header>

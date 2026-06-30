@@ -1,12 +1,22 @@
 import { Suspense } from "react";
-import { connection } from "next/server";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { DeveloperCount } from "@/components/DeveloperCount";
 import { HomeLeaderboard } from "@/components/HomeLeaderboard";
 import { Roaster } from "@/components/Roaster";
 import type { TierKey } from "@/lib/tier";
 
-export const dynamic = "force-dynamic";
+// ISR: the homepage shell is fully static (the scan form, tier pills and copy are
+// locale-only; DeveloperCount fetches client-side; the leaderboard preview reads
+// the cached board). Serving it from the CDN instead of rendering a function on
+// every visit is what frees the serverless pool for the LLM scan/roast traffic.
+// 60s keeps the leaderboard preview fresh enough; the window selector refetches
+// live client-side anyway.
+// Pin the homepage to static + ISR. Next 16's "auto" heuristic otherwise renders
+// it on demand (a function per visit); forcing static serves the shell from the
+// CDN and revalidates the leaderboard preview every 60s. This is the change that
+// takes the bulk of homepage traffic off the serverless pool.
+export const dynamic = "force-static";
+export const revalidate = 60;
 
 // Tier pills: emoji + color are language-neutral; the label comes from i18n.
 const TIER_PILLS: { key: TierKey; emoji: string; cls: string }[] = [
@@ -19,7 +29,6 @@ const TIER_PILLS: { key: TierKey; emoji: string; cls: string }[] = [
 
 export default async function Home({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
-  await connection();
   setRequestLocale(locale);
   const t = await getTranslations("home");
   const tt = await getTranslations("tiers");

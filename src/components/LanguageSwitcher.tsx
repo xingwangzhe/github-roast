@@ -1,22 +1,22 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { useSearchParams } from "next/navigation";
 import { usePathname, useRouter } from "@/i18n/navigation";
 import { routing } from "@/i18n/routing";
 
 /**
  * zh / en toggle. Uses next-intl navigation so it swaps the locale while keeping
  * the current path (and re-adds or drops the `/en` prefix accordingly).
+ *
+ * The current query string is read from `window.location.search` at click time
+ * rather than via `useSearchParams()`, so this navbar island doesn't force a CSR
+ * bailout that would block the homepage (and other pages) from prerendering.
  */
 export function LanguageSwitcher() {
   const t = useTranslations("langSwitch");
   const locale = useLocale();
   const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const query = searchParams.toString();
-  const href = query ? `${pathname}?${query}` : pathname;
 
   return (
     <div
@@ -33,7 +33,8 @@ export function LanguageSwitcher() {
               // Remember the manual choice so the next visit to the bare root
               // honors it (the middleware reads this same cookie).
               document.cookie = `NEXT_LOCALE=${loc}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
-              router.replace(href, { locale: loc });
+              const query = window.location.search; // includes the leading "?"
+              router.replace(`${pathname}${query}`, { locale: loc });
             }
           }}
           aria-current={loc === locale}

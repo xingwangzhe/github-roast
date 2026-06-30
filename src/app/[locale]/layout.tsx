@@ -7,7 +7,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { routing } from "@/i18n/routing";
-import { auth, authConfigured, signIn } from "@/lib/auth";
+import { authConfigured } from "@/lib/auth";
 import { Navbar } from "@/components/Navbar";
 import { LoginNudge } from "@/components/LoginNudge";
 import { PoweredByLobeHub } from "@/components/Sponsor";
@@ -94,11 +94,11 @@ export default async function LocaleLayout({
   setRequestLocale(locale);
   const tMeta = await getTranslations({ locale, namespace: "meta" });
 
-  // Show the subtle GitHub-login nudge only when OAuth is configured and the
-  // visitor is signed out. `auth()` already runs in the navbar, so reading it
-  // here adds no extra dynamic cost.
-  const session = authConfigured() ? await auth() : null;
-  const showLoginNudge = authConfigured() && !session?.user;
+  // The login nudge gates its own visibility client-side (OAuth configured +
+  // signed out, probed via /api/me). We deliberately do NOT read the session
+  // here: a server-side auth() reads cookies, which would opt every page out of
+  // static/ISR caching — the whole point of this refactor.
+  const oauthConfigured = authConfigured();
 
   return (
     <html
@@ -132,14 +132,7 @@ export default async function LocaleLayout({
           <footer className="flex w-full justify-center py-6">
             <PoweredByLobeHub />
           </footer>
-          {showLoginNudge ? (
-            <LoginNudge
-              signInAction={async () => {
-                "use server";
-                await signIn("github");
-              }}
-            />
-          ) : null}
+          <LoginNudge configured={oauthConfigured} />
           <Analytics />
           <SpeedInsights />
         </NextIntlClientProvider>
