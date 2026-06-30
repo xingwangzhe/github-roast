@@ -26,6 +26,13 @@ export async function HomeLeaderboard({ pageSize = 10 }: { pageSize?: number }) 
     trendView: tBoard("trendView"),
     scoreView: tBoard("scoreView"),
     heatView: tBoard("heatView"),
+    windowAria: tBoard("windowAria"),
+    window24h: tBoard("window24h"),
+    window7d: tBoard("window7d"),
+    window30d: tBoard("window30d"),
+    windowAll: tBoard("windowAll"),
+    loading: tBoard("loading"),
+    loadError: tBoard("loadError"),
   };
 
   const [trending, score, heat] = await Promise.all([

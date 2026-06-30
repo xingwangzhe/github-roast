@@ -137,7 +137,12 @@
     "viewDetail": "查看 @{username} 的评分详情",
     "trendSubtitle": "趋势分综合评分、近 7 天唯一访客热度和最近查询时间；热度会先归一化，避免刷量压过高质量账号。",
     "scoreSubtitle": "按 0-100 分价值与信任评分排序。",
-    "heatSubtitle": "按被成功查询审判的累计次数排序。"
+    "heatSubtitle": "按被成功查询审判的累计次数排序。",
+    "windowAria": "时间范围",
+    "window24h": "24 小时",
+    "window7d": "7 天",
+    "window30d": "30 天",
+    "windowAll": "全部"
   },
   "detail": {
     "back": "← 返回名人堂",

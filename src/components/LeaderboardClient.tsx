@@ -3,6 +3,7 @@
 import { useLocale, useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useRef, useState } from "react";
 import { Link } from "@/i18n/navigation";
+import type { LeaderboardWindow } from "@/lib/leaderboardWindow";
 import { TIER_KEY, tierStyle } from "@/lib/tier";
 import type { Tier } from "@/lib/types";
 import { resolveLeaderboardPageInput } from "./leaderboardPagination";
@@ -145,6 +146,7 @@ export function LeaderboardClient({
   scoreEntries,
   heatEntries,
   trendingEntries,
+  timeWindow = "all",
 }: {
   initialView: LeaderboardView;
   labels: LeaderboardLabels;
@@ -152,6 +154,10 @@ export function LeaderboardClient({
   scoreEntries: LeaderboardClientEntry[];
   heatEntries: LeaderboardClientEntry[];
   trendingEntries: LeaderboardClientEntry[];
+  // Active time window — switches the heat figure from cumulative lookups
+  // ("all") to the windowed unique-visitor count. Named `timeWindow`, not
+  // `window`, so it never shadows the global used by scrollToListTop.
+  timeWindow?: LeaderboardWindow;
 }) {
   const locale = useLocale();
   const tTier = useTranslations("tiers");
@@ -213,7 +219,10 @@ export function LeaderboardClient({
           const detailLabel = labels.viewDetail.replace("{username}", e.username);
           const trendingScore = e.trending_score ?? 0;
           const recentLookupCount = e.recent_lookup_count ?? 0;
-          const heatValue = initialView === "trending" ? recentLookupCount : e.lookup_count;
+          // Heat figure tracks the active window: windowed unique visitors for a
+          // time window, cumulative lookups for "all".
+          const heat = timeWindow === "all" ? e.lookup_count : recentLookupCount;
+          const heatValue = initialView === "trending" ? recentLookupCount : heat;
           const profileUrl = e.profile_url ?? `https://github.com/${encodeURIComponent(e.username)}`;
           const scoreLabel = (
             <span className={style.text}>
@@ -248,7 +257,7 @@ export function LeaderboardClient({
                       <>
                         {trendValue}
                         {divider}
-                        <span className="text-amber-300">{e.lookup_count}</span>
+                        <span className="text-amber-300">{heat}</span>
                       </>
                     ),
                     title: labels.trendTitle,
@@ -258,9 +267,9 @@ export function LeaderboardClient({
                 ? [
                     {
                       label: heatLabel,
-                      value: <span className="text-amber-300">{e.lookup_count}</span>,
+                      value: <span className="text-amber-300">{heat}</span>,
                       title: labels.heatTitle,
-                      ariaLabel: `${labels.heatLabel} ${e.lookup_count}`,
+                      ariaLabel: `${labels.heatLabel} ${heat}`,
                       valueClass: "text-lg",
                     },
                     {

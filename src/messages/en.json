@@ -137,7 +137,12 @@
     "viewDetail": "View @{username}'s score detail",
     "trendSubtitle": "Trend blends score, unique 7-day visitor heat, and recent lookup recency; heat is normalized so raw attention cannot overwhelm quality.",
     "scoreSubtitle": "Ranked by the 0-100 value and trust score.",
-    "heatSubtitle": "Ranked by total successful roast lookups."
+    "heatSubtitle": "Ranked by total successful roast lookups.",
+    "windowAria": "Time range",
+    "window24h": "24h",
+    "window7d": "7d",
+    "window30d": "30d",
+    "windowAll": "All time"
   },
   "detail": {
     "back": "← Back to Hall of Fame",

@@ -5,7 +5,18 @@ import { Link } from "@/i18n/navigation";
 import { Leaderboard } from "@/components/Leaderboard";
 import { JsonLd, leaderboardJsonLd } from "@/components/JsonLd";
 import { getLeaderboard } from "@/lib/db";
-import type { LeaderboardView } from "@/components/LeaderboardClient";
+import {
+  LEADERBOARD_WINDOW_OPTIONS,
+  type LeaderboardWindow,
+} from "@/lib/leaderboardWindow";
+import { type LeaderboardView } from "@/components/LeaderboardClient";
+
+const WINDOW_LABEL_KEY: Record<LeaderboardWindow, string> = {
+  "24h": "window24h",
+  "7d": "window7d",
+  "30d": "window30d",
+  all: "windowAll",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +41,7 @@ export default async function LeaderboardPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams?: Promise<{ view?: string }>;
+  searchParams?: Promise<{ view?: string; window?: string }>;
 }) {
   const { locale } = await params;
   const query = await searchParams;
@@ -40,6 +51,22 @@ export default async function LeaderboardPage({
       : query?.view === "heat"
         ? "heat"
         : "trending";
+  const timeWindow: LeaderboardWindow =
+    query?.window === "24h"
+      ? "24h"
+      : query?.window === "7d"
+        ? "7d"
+        : query?.window === "30d"
+          ? "30d"
+          : "all";
+  // Clean URLs: omit the default view/window. Both selectors preserve the other.
+  const boardHref = (nextView: LeaderboardView, nextWindow: LeaderboardWindow) => {
+    const search = new URLSearchParams();
+    if (nextView !== "trending") search.set("view", nextView);
+    if (nextWindow !== "all") search.set("window", nextWindow);
+    const qs = search.toString();
+    return qs ? `/leaderboard?${qs}` : "/leaderboard";
+  };
   await connection();
   setRequestLocale(locale);
   const t = await getTranslations("leaderboard");
@@ -59,11 +86,15 @@ export default async function LeaderboardPage({
     `shrink-0 snap-start whitespace-nowrap rounded-full px-3 py-1.5 text-center transition-colors ${
       view === tab ? "bg-white/10 text-zinc-100" : "text-zinc-500 hover:text-zinc-200"
     }`;
+  const windowTabClass = (tab: LeaderboardWindow) =>
+    `shrink-0 snap-start whitespace-nowrap rounded-full px-3 py-1 text-center transition-colors ${
+      timeWindow === tab ? "bg-white/10 text-zinc-100" : "text-zinc-500 hover:text-zinc-200"
+    }`;
 
   // Structured data only for the canonical score ranking — the directory's main
   // "top developers" list. Heat is a sort variant behind query params, so
   // emitting one ItemList keeps the markup unambiguous for crawlers.
-  const rankingEntries = view === "score" ? await getLeaderboard(50) : [];
+  const rankingEntries = view === "score" ? await getLeaderboard(50, undefined, timeWindow) : [];
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-5 py-14 sm:py-20">
@@ -85,15 +116,26 @@ export default async function LeaderboardPage({
             </h1>
             <p className="mt-2 text-lg font-black text-zinc-300 sm:text-xl">{viewTitle}</p>
             <div className="mt-4 flex w-full max-w-full snap-x items-center gap-1 overflow-x-auto rounded-full border border-white/10 bg-white/[0.03] p-1 text-sm font-bold sm:max-w-[40rem]">
-              <Link href="/leaderboard" className={tabClass("trending")}>
+              <Link href={boardHref("trending", timeWindow)} className={tabClass("trending")}>
                 {t("trendView")}
               </Link>
-              <Link href="/leaderboard?view=score" className={tabClass("score")}>
+              <Link href={boardHref("score", timeWindow)} className={tabClass("score")}>
                 {t("scoreView")}
               </Link>
-              <Link href="/leaderboard?view=heat" className={tabClass("heat")}>
+              <Link href={boardHref("heat", timeWindow)} className={tabClass("heat")}>
                 {t("heatView")}
               </Link>
+            </div>
+            <div
+              role="group"
+              aria-label={t("windowAria")}
+              className="mt-2 flex w-full max-w-full snap-x items-center gap-1 overflow-x-auto rounded-full border border-white/10 bg-white/[0.03] p-1 text-xs font-bold sm:max-w-[40rem]"
+            >
+              {LEADERBOARD_WINDOW_OPTIONS.map((w) => (
+                <Link key={w} href={boardHref(view, w)} className={windowTabClass(w)}>
+                  {t(WINDOW_LABEL_KEY[w])}
+                </Link>
+              ))}
             </div>
           </div>
           <Link
@@ -106,7 +148,7 @@ export default async function LeaderboardPage({
         <p className="mt-2 text-zinc-400">{subtitle}</p>
       </header>
 
-      <Leaderboard pageSize={20} initialView={view} />
+      <Leaderboard pageSize={20} initialView={view} timeWindow={timeWindow} />
 
       <footer className="mt-12 text-center text-xs leading-relaxed text-zinc-600">
         {t.rich("footerNote", {
