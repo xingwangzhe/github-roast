@@ -126,6 +126,12 @@
     "prs": "PRs",
     "roastHeading": "🔥 Full roast",
     "roastEmpty": "This roast hasn't been archived yet — <a>judge again from the home page</a> to generate it.",
+    "livePendingBanner": "Roasting in progress…",
+    "livePending": "Warming up the roast…",
+    "liveError": "The roast failed to generate.",
+    "liveRateLimited": "Too many roasts right now — try again in a minute.",
+    "liveExpired": "The scan expired before the roast finished.",
+    "liveGoHome": "Roast again from the home page →",
     "battlesHeading": "⚔️ Battles",
     "battlesSub": "PK duels this dev has fought",
     "battleWin": "Win",
@@ -158,7 +164,8 @@
     "title": "{username} — {score}/100 · {tier} | ghfind",
     "descWithTags": "{tags} — see {username}'s full score report on ghfind.com.",
     "descPlain": "{username}'s GitHub value & trust report — ghfind.com.",
-    "notFoundTitle": "Account not found · ghfind"
+    "notFoundTitle": "Account not found · ghfind",
+    "pendingTitle": "Roasting @{username}… · ghfind"
   },
   "roaster": {
     "inputPlaceholder": "Enter a GitHub username or profile URL",

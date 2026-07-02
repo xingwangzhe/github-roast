@@ -13,7 +13,10 @@ import {
   getSimilarAccounts,
   getUserMatchups,
 } from "@/lib/db";
+import { getCachedScan } from "@/lib/redis";
 import { aggregateLanguages, collectTopics } from "@/lib/profile-insights";
+import { PendingProfile } from "./PendingProfile";
+import { LiveRoast } from "@/components/LiveRoast";
 import { JsonLd, profileJsonLd } from "@/components/JsonLd";
 import { SITE_URL, PUBLIC_INDEX_MIN_SCORE, localeAlternates } from "@/lib/site";
 import { CopyBadge } from "@/components/CopyBadge";
@@ -37,16 +40,34 @@ export const dynamic = "force-dynamic";
 
 // Dedupe the DB read between generateMetadata() and the page render.
 const getDetail = cache((username: string) => getAccountDetail(username));
+// Dedupe the cached-scan read (pending-profile fallback) across the same pair.
+const getLiveScan = cache((username: string) => getCachedScan(username));
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string; username: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }): Promise<Metadata> {
   const { locale, username } = await params;
   const t = await getTranslations({ locale, namespace: "detailMeta" });
-  const d = await getDetail(decodeURIComponent(username));
-  if (!d) return { title: t("notFoundTitle") };
+  const decoded = decodeURIComponent(username);
+  const d = await getDetail(decoded);
+  if (!d) {
+    // No persisted row yet. A cached scan or the `?roasting=1` handoff marker
+    // means we render the live-roast pending shell rather than 404 — give it a
+    // title and keep it out of search (it's transient).
+    const scan = await getLiveScan(decoded);
+    const roasting = (await searchParams)?.roasting === "1";
+    if (scan || roasting) {
+      return {
+        title: t("pendingTitle", { username: scan?.metrics.username ?? decoded }),
+        robots: { index: false, follow: true },
+      };
+    }
+    return { title: t("notFoundTitle") };
+  }
 
   const tt = await getTranslations({ locale, namespace: "tiers" });
   const tierName = tt(`${TIER_KEY[d.tier]}.name`);
@@ -87,13 +108,26 @@ export async function generateMetadata({
 
 export default async function AccountPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string; username: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { locale, username } = await params;
   setRequestLocale(locale);
-  const d = await getDetail(decodeURIComponent(username));
-  if (!d) notFound();
+  const decoded = decodeURIComponent(username);
+  const d = await getDetail(decoded);
+  if (!d) {
+    // First-time username being roasted right now: no `scores` row yet. Render
+    // the live pending shell when we have a scan to show — either the server-side
+    // cache, or the `?roasting=1` handoff (the shell reads the scan the homepage
+    // stashed in sessionStorage). LiveRoast refreshes into the full profile on
+    // completion. Otherwise it's a genuine unknown handle → 404.
+    const scan = await getLiveScan(decoded);
+    const roasting = (await searchParams)?.roasting === "1";
+    if (!scan && !roasting) notFound();
+    return <PendingProfile username={decoded} initialScan={scan ?? null} />;
+  }
 
   const t = await getTranslations("detail");
   const tDim = await getTranslations("dimensions");
@@ -108,6 +142,10 @@ export default async function AccountPage({
   // visitor's language even when the full report exists only in the other one.
   // Empty for legacy rows — those still carry the one-liner inline in `roast`.
   const roastLine = lang === "en" ? d.roast_line.en : d.roast_line.zh;
+  // Row exists but this language's roast is missing (e.g. an English visitor on a
+  // zh-only roast). If the scan is still cached, stream a live roast in the
+  // report slot instead of the "run a roast" empty state.
+  const liveScan = !roast && !roastLine ? await getLiveScan(d.username) : null;
   const [similar, comments, snap, rank, session, battles] = await Promise.all([
     getSimilarAccounts(d.username, d.final_score, d.sub_scores),
     getProfileComments(d.username),
@@ -552,7 +590,9 @@ export default async function AccountPage({
           <div className="report text-[0.95rem] text-zinc-200">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{roast}</ReactMarkdown>
           </div>
-        ) : roastLine ? null : (
+        ) : roastLine ? null : liveScan ? (
+          <LiveRoast username={d.username} scan={liveScan} />
+        ) : (
           <p className="text-sm text-zinc-400">
             {t.rich("roastEmpty", {
               a: (c) => (

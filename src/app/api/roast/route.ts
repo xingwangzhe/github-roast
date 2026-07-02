@@ -57,6 +57,9 @@ interface ByoKey {
 
 interface RoastBody {
   scan?: ScanResult;
+  /** Bare handle when the client has no scan payload (profile-page live roast).
+   * The route then relies on the server-side cached scan (getCachedScan). */
+  username?: string;
   byoKey?: ByoKey;
   /** UI locale → report language. Defaults to zh (see {@link normLang}). */
   lang?: string;
@@ -404,7 +407,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  const username = body.scan?.metrics?.username;
+  const username = body.scan?.metrics?.username ?? body.username;
   if (!username || !USERNAME_RE.test(username)) {
     return NextResponse.json({ error: "missing_scan" }, { status: 400 });
   }

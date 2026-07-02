@@ -7,7 +7,7 @@ describe("home username links", () => {
   it("routes the generated score username to the internal profile page", () => {
     const roaster = source("Roaster.tsx");
 
-    expect(roaster).toContain('import { Link } from "@/i18n/navigation";');
+    expect(roaster).toMatch(/import \{[^}]*\bLink\b[^}]*\} from "@\/i18n\/navigation";/);
     expect(roaster).toMatch(/<Link\s+href=\{`\/u\/\$\{scan\.metrics\.username\}`\}/);
     expect(roaster).not.toContain("href={scan.metrics.profile_url");
   });
