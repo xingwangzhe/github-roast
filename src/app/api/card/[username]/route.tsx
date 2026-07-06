@@ -1,4 +1,10 @@
-import { getAccountDetail, getPercentile, getProfileSnapshot } from "@/lib/db";
+import {
+  getAccountDetail,
+  getPercentile,
+  getProfileSnapshot,
+  getWeeklyBaselines,
+  resolveWeeklyDelta,
+} from "@/lib/db";
 import { BADGE_COLOR, TIER_EN, TIER_LABEL_EN } from "@/lib/badge";
 import { beatPercent } from "@/lib/percentile";
 import { USERNAME_RE } from "@/lib/username";
@@ -54,6 +60,15 @@ export async function GET(req: Request, ctx: { params: Promise<{ username: strin
   const color = BADGE_COLOR[tier];
   const counts = await getPercentile(detail.final_score);
   const beat = counts ? beatPercent(counts.below, counts.total) : null;
+  // Weekly movement — the embed changes week to week, so a card pasted into a
+  // README keeps pulling its owner (and their visitors) back.
+  const baselines = await getWeeklyBaselines([detail.username]);
+  const delta = resolveWeeklyDelta({
+    currentScore: detail.final_score,
+    snapshotBaseline: baselines.get(detail.username) ?? null,
+    prevScore: detail.prev_score,
+    prevScannedAt: detail.prev_scanned_at,
+  });
   const avatar = await avatarDataUrl(detail.avatar_url);
   const displayName =
     detail.display_name && /^[\x20-\x7e]+$/.test(detail.display_name) ? detail.display_name : null;
@@ -120,6 +135,26 @@ export async function GET(req: Request, ctx: { params: Promise<{ username: strin
             <span style={{ fontSize: 40, color: palette.weak, marginLeft: 8, marginBottom: 10 }}>
               /100
             </span>
+            {/* Brag surface: only upward movement is shown — a public README
+                embed must never broadcast its owner's decline. */}
+            {delta !== null && delta > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  marginLeft: 18,
+                  marginBottom: 14,
+                  padding: "6px 16px",
+                  borderRadius: 9999,
+                  backgroundColor: "rgba(34,197,94,0.16)",
+                  color: "#22C55E",
+                  fontSize: 26,
+                  fontWeight: 800,
+                }}
+              >
+                ↑{delta.toFixed(1)} this week
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", fontSize: 40, fontWeight: 800, color, marginTop: 8 }}>
             {TIER_EN[tier]}

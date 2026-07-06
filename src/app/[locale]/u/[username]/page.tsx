@@ -42,6 +42,7 @@ import { ProfileBackfill } from "@/components/ProfileBackfill";
 import { BadgeReferralBanner } from "@/components/BadgeReferralBanner";
 import { ProfileLandingBeacon } from "@/components/ProfileLandingBeacon";
 import { ChallengeCta } from "@/components/ChallengeCta";
+import { FollowButton } from "@/components/FollowButton";
 import { FacetRankLink } from "@/components/FacetRankLink";
 import { auth, authConfigured } from "@/lib/auth";
 
@@ -467,17 +468,21 @@ export default async function AccountPage({
             {t("challengeOwner")}
           </Link>
         ) : (
-          <ChallengeCta
-            opponent={d.username}
-            source="profile_btn"
-            variant="banner"
-            label={t("challengeCta")}
-            goLabel={t("challengeGo")}
-            placeholder={t("challengePlaceholder")}
-            selfHint={t("challengeSelf")}
-            invalidHint={t("challengeInvalid")}
-            className="mt-3"
-          />
+          <>
+            <ChallengeCta
+              opponent={d.username}
+              source="profile_btn"
+              variant="banner"
+              label={t("challengeCta")}
+              goLabel={t("challengeGo")}
+              placeholder={t("challengePlaceholder")}
+              selfHint={t("challengeSelf")}
+              invalidHint={t("challengeInvalid")}
+              className="mt-3"
+            />
+            {/* Watch this handle — feeds the homepage following module. */}
+            <FollowButton username={d.username} className="mt-3" />
+          </>
         )}
         {isOwner && (
           <RescanButton username={d.username} scannedAt={d.scanned_at} className="mt-3" />

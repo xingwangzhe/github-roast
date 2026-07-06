@@ -107,6 +107,10 @@ export function buildBadge(opts: {
   score: number | null;
   tier: Tier | null;
   lang?: BadgeLang;
+  /** Score change over the past week; renders as " ↑3.2" when positive.
+   * Drops are hidden — the badge is a brag surface, not a report card — so
+   * embedded badges only ever move upward week to week. */
+  delta?: number | null;
 }): string {
   const lang: BadgeLang = opts.lang === "zh" ? "zh" : "en";
   if (opts.score === null || opts.tier === null) {
@@ -117,9 +121,13 @@ export function buildBadge(opts: {
     });
   }
   const word = lang === "zh" ? opts.tier : TIER_EN[opts.tier];
+  const delta =
+    typeof opts.delta === "number" && opts.delta >= 0.05
+      ? ` ↑${opts.delta.toFixed(1)}`
+      : "";
   return renderBadge({
     label: LABEL,
-    value: `${opts.score.toFixed(2)} ${word}`,
+    value: `${opts.score.toFixed(2)} ${word}${delta}`,
     color: BADGE_COLOR[opts.tier],
   });
 }

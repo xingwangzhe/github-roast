@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getScoreBrief } from "@/lib/db";
+import { getScoreBrief, getWeeklyBaselines, resolveWeeklyDelta } from "@/lib/db";
 import { buildBadge, type BadgeLang } from "@/lib/badge";
 
 export const runtime = "nodejs";
@@ -39,8 +39,17 @@ export async function GET(
   if (!brief) {
     return svg(buildBadge({ score: null, tier: null, lang }), UNRATED_CACHE);
   }
+  // Weekly movement makes the embedded badge a living stat instead of a static
+  // trophy — one indexed snapshot lookup, then served from the CDN for 6h.
+  const baselines = await getWeeklyBaselines([brief.username]);
+  const delta = resolveWeeklyDelta({
+    currentScore: brief.final_score,
+    snapshotBaseline: baselines.get(brief.username) ?? null,
+    prevScore: brief.prev_score,
+    prevScannedAt: brief.prev_scanned_at,
+  });
   return svg(
-    buildBadge({ score: brief.final_score, tier: brief.tier, lang }),
+    buildBadge({ score: brief.final_score, tier: brief.tier, lang, delta }),
     RATED_CACHE,
   );
 }

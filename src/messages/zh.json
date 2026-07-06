@@ -120,6 +120,15 @@
     "profileCta": "和 TA 对线",
     "ownerCta": "拉人来跟我对线"
   },
+  "follow": {
+    "button": "关注 TA",
+    "following": "已关注",
+    "limit": "最多关注 50 位开发者。",
+    "homeTitle": "我关注的人",
+    "homeSub": "本周分数变化",
+    "homeEmpty": "在开发者的个人页点「关注」,回来这里看他们的分数涨跌。",
+    "unrated": "未评分"
+  },
   "detail": {
     "back": "← 返回名人堂",
     "backfilling": "🔍 正在补全 TA 的开源足迹（仓库 / 语言 / 贡献）…",
@@ -574,6 +583,8 @@
     "adviceHeading": "💡 进步建议",
     "saveImage": "📸 保存对战图",
     "saving": "生成中…",
+    "copyEmbed": "🃏 复制 README 战绩卡",
+    "embedCopied": "✅ 已复制,去贴到 README",
     "shareText": "{a} vs {b} —— 谁更硬核？来 ghfind.com 围观这场 GitHub 对决 ⚔️",
     "trendingHeading": "🔥 热门对战",
     "trendingSub": "被围观最多的 GitHub 开发者 PK,点进去看毒舌裁决",

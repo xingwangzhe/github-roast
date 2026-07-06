@@ -342,6 +342,17 @@ function ensureSchema(db: Client): Promise<void> {
           `CREATE INDEX IF NOT EXISTS idx_vs_matchups_a ON vs_matchups(handle_a, updated_at DESC)`,
           `CREATE INDEX IF NOT EXISTS idx_vs_matchups_b ON vs_matchups(handle_b, updated_at DESC)`,
           `CREATE INDEX IF NOT EXISTS idx_vs_matchups_hot ON vs_matchups(view_count DESC)`,
+          // Follows — a signed-in user watching other handles. Powers the
+          // homepage "following" module (score changes of the accounts you
+          // watch). Follower keyed by GitHub numeric id (stable across renames),
+          // target by lowercased handle so it joins straight onto `scores`.
+          `CREATE TABLE IF NOT EXISTS follows (
+             follower_github_id INTEGER NOT NULL,
+             target_username    TEXT NOT NULL,
+             created_at         INTEGER NOT NULL,
+             PRIMARY KEY (follower_github_id, target_username)
+           )`,
+          `CREATE INDEX IF NOT EXISTS idx_follows_target ON follows(target_username)`,
         ],
         "write",
       );
@@ -1347,6 +1358,9 @@ export interface AccountDetail {
   /** English roast report; null until an `/en` roast has been generated. */
   roast_en: string | null;
   scanned_at: number;
+  /** Previous scan's score/time (progress-board columns); NULL until a re-scan. */
+  prev_score: number | null;
+  prev_scanned_at: number | null;
 }
 
 export interface ArchivedRoast {
@@ -1363,6 +1377,9 @@ export interface ScoreBrief {
   display_name: string | null;
   final_score: number;
   tier: Tier;
+  /** Previous scan's score/time — feeds the badge's weekly-delta fallback. */
+  prev_score: number | null;
+  prev_scanned_at: number | null;
 }
 
 /** Minimal score lookup for the SVG badge — avoids fetching the heavy roast text. */
@@ -1372,7 +1389,7 @@ export async function getScoreBrief(username: string): Promise<ScoreBrief | null
   try {
     await ensureSchema(db);
     const res = await db.execute({
-      sql: `SELECT username, display_name, final_score, tier
+      sql: `SELECT username, display_name, final_score, tier, prev_score, prev_scanned_at
             FROM scores
             WHERE username = ? AND hidden = 0
             LIMIT 1`,
@@ -1385,6 +1402,8 @@ export async function getScoreBrief(username: string): Promise<ScoreBrief | null
       display_name: r.display_name as string | null,
       final_score: Number(r.final_score),
       tier: String(r.tier) as Tier,
+      prev_score: r.prev_score === null ? null : Number(r.prev_score),
+      prev_scanned_at: r.prev_scanned_at === null ? null : Number(r.prev_scanned_at),
     };
   } catch (e) {
     console.error("getScoreBrief failed:", e);
@@ -1654,7 +1673,8 @@ export async function getAccountDetail(username: string): Promise<AccountDetail 
     await ensureSchema(db);
     const res = await db.execute({
       sql: `SELECT username, display_name, avatar_url, profile_url, final_score, tier,
-                   tags, roast_line, sub_scores, roast, roast_en, scanned_at
+                   tags, roast_line, sub_scores, roast, roast_en, scanned_at,
+                   prev_score, prev_scanned_at
             FROM scores
             WHERE username = ? AND hidden = 0
             LIMIT 1`,
@@ -1675,6 +1695,8 @@ export async function getAccountDetail(username: string): Promise<AccountDetail 
       roast: (r.roast as string | null) ?? null,
       roast_en: (r.roast_en as string | null) ?? null,
       scanned_at: Number(r.scanned_at),
+      prev_score: r.prev_score === null ? null : Number(r.prev_score),
+      prev_scanned_at: r.prev_scanned_at === null ? null : Number(r.prev_scanned_at),
     };
   } catch (e) {
     console.error("getAccountDetail failed:", e);
@@ -2098,6 +2120,218 @@ export async function removeProfileReaction(
     return getProfileReactionState(target, input.voterGithubId);
   } catch (e) {
     console.error("removeProfileReaction failed:", e);
+    return null;
+  }
+}
+
+// ── Weekly delta & follows ───────────────────────────────────────────────────
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Hard cap per follower — keeps the homepage module and the IN-list query small. */
+export const MAX_FOLLOWS = 50;
+
+/**
+ * Score-as-of-a-week-ago baselines from `score_snapshots`: for each username the
+ * newest snapshot at or before `now - 7d`. Accounts younger than a week (or never
+ * roasted) have no entry — callers fall back via {@link resolveWeeklyDelta}.
+ */
+export async function getWeeklyBaselines(
+  usernames: string[],
+  now = Date.now(),
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const names = [...new Set(usernames.map((u) => u.toLowerCase()).filter(Boolean))];
+  if (names.length === 0) return out;
+  const db = getClient();
+  if (!db) return out;
+  try {
+    await ensureSchema(db);
+    const ph = names.map(() => "?").join(",");
+    // MAX(final_score) + GROUP BY dedupes the rare tie where the zh and en
+    // snapshots of one generation share a generated_at (same score either way).
+    const res = await db.execute({
+      sql: `SELECT s.username AS username, MAX(s.final_score) AS final_score
+            FROM score_snapshots s
+            JOIN (
+              SELECT username, MAX(generated_at) AS g
+              FROM score_snapshots
+              WHERE generated_at <= ? AND username IN (${ph})
+              GROUP BY username
+            ) m ON m.username = s.username AND m.g = s.generated_at
+            GROUP BY s.username`,
+      args: [now - WEEK_MS, ...names],
+    });
+    for (const r of res.rows) out.set(String(r.username), Number(r.final_score));
+    return out;
+  } catch (e) {
+    console.error("getWeeklyBaselines failed:", e);
+    return out;
+  }
+}
+
+/**
+ * The "↑x this week" delta for a card or the follow feed. Baseline preference:
+ * a snapshot from ≥7d ago; else `prev_score` — valid only when the previous scan
+ * itself predates the cutoff (then the score at cutoff time WAS prev_score).
+ * Returns null when there is no trustworthy baseline or the change would render
+ * as 0.0 anyway.
+ */
+export function resolveWeeklyDelta(input: {
+  currentScore: number;
+  snapshotBaseline?: number | null;
+  prevScore?: number | null;
+  prevScannedAt?: number | null;
+  now?: number;
+}): number | null {
+  const cutoff = (input.now ?? Date.now()) - WEEK_MS;
+  const baseline =
+    input.snapshotBaseline ??
+    (typeof input.prevScore === "number" &&
+    typeof input.prevScannedAt === "number" &&
+    input.prevScannedAt <= cutoff
+      ? input.prevScore
+      : null);
+  if (baseline === null || baseline === undefined) return null;
+  const delta = input.currentScore - baseline;
+  return Math.abs(delta) < 0.05 ? null : delta;
+}
+
+export interface FollowedAccount {
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  /** Null when the followed account's score row is hidden/gone. */
+  final_score: number | null;
+  tier: Tier | null;
+  weekly_delta: number | null;
+  followed_at: number;
+}
+
+/** Follow a handle. "limit" when the follower is at MAX_FOLLOWS; null on DB failure. */
+export async function setFollow(
+  followerGithubId: number,
+  targetUsername: string,
+): Promise<"ok" | "limit" | null> {
+  const db = getClient();
+  const target = normalizeGitHubUsername(targetUsername);
+  if (!db || !target || !validGithubId(followerGithubId)) return null;
+  try {
+    await ensureSchema(db);
+    const count = await db.execute({
+      sql: `SELECT COUNT(*) AS n FROM follows WHERE follower_github_id = ?`,
+      args: [followerGithubId],
+    });
+    const existing = await db.execute({
+      sql: `SELECT 1 FROM follows WHERE follower_github_id = ? AND target_username = ? LIMIT 1`,
+      args: [followerGithubId, target],
+    });
+    if (existing.rows.length === 0 && Number(count.rows[0]?.n ?? 0) >= MAX_FOLLOWS) {
+      return "limit";
+    }
+    await db.execute({
+      sql: `INSERT INTO follows (follower_github_id, target_username, created_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT (follower_github_id, target_username) DO NOTHING`,
+      args: [followerGithubId, target, Date.now()],
+    });
+    return "ok";
+  } catch (e) {
+    console.error("setFollow failed:", e);
+    return null;
+  }
+}
+
+export async function removeFollow(
+  followerGithubId: number,
+  targetUsername: string,
+): Promise<boolean> {
+  const db = getClient();
+  const target = normalizeGitHubUsername(targetUsername);
+  if (!db || !target || !validGithubId(followerGithubId)) return false;
+  try {
+    await ensureSchema(db);
+    await db.execute({
+      sql: `DELETE FROM follows WHERE follower_github_id = ? AND target_username = ?`,
+      args: [followerGithubId, target],
+    });
+    return true;
+  } catch (e) {
+    console.error("removeFollow failed:", e);
+    return false;
+  }
+}
+
+export async function isFollowing(
+  followerGithubId: number,
+  targetUsername: string,
+): Promise<boolean> {
+  const db = getClient();
+  const target = normalizeGitHubUsername(targetUsername);
+  if (!db || !target || !validGithubId(followerGithubId)) return false;
+  try {
+    await ensureSchema(db);
+    const res = await db.execute({
+      sql: `SELECT 1 FROM follows WHERE follower_github_id = ? AND target_username = ? LIMIT 1`,
+      args: [followerGithubId, target],
+    });
+    return res.rows.length > 0;
+  } catch (e) {
+    console.error("isFollowing failed:", e);
+    return false;
+  }
+}
+
+/**
+ * The signed-in user's follow feed: each watched handle with its current score
+ * and the "this week" delta. One join for the scores plus one batched baseline
+ * lookup — bounded by MAX_FOLLOWS. Null only on DB failure (vs [] for "follows
+ * nobody"), so the API can tell the two apart.
+ */
+export async function listFollowedAccounts(
+  followerGithubId: number,
+): Promise<FollowedAccount[] | null> {
+  const db = getClient();
+  if (!db || !validGithubId(followerGithubId)) return null;
+  try {
+    await ensureSchema(db);
+    const res = await db.execute({
+      sql: `SELECT f.target_username AS username, f.created_at AS followed_at,
+                   s.display_name, s.avatar_url, s.final_score, s.tier,
+                   s.prev_score, s.prev_scanned_at
+            FROM follows f
+            LEFT JOIN scores s ON s.username = f.target_username AND s.hidden = 0
+            WHERE f.follower_github_id = ?
+            ORDER BY f.created_at DESC
+            LIMIT ?`,
+      args: [followerGithubId, MAX_FOLLOWS],
+    });
+    const scored = res.rows.filter((r) => r.final_score !== null).map((r) => String(r.username));
+    const baselines = await getWeeklyBaselines(scored);
+    const now = Date.now();
+    return res.rows.map((r) => {
+      const finalScore = r.final_score === null ? null : Number(r.final_score);
+      return {
+        username: String(r.username),
+        display_name: (r.display_name as string | null) ?? null,
+        avatar_url: (r.avatar_url as string | null) ?? null,
+        final_score: finalScore,
+        tier: r.tier === null ? null : (String(r.tier) as Tier),
+        weekly_delta:
+          finalScore === null
+            ? null
+            : resolveWeeklyDelta({
+                currentScore: finalScore,
+                snapshotBaseline: baselines.get(String(r.username)) ?? null,
+                prevScore: r.prev_score === null ? null : Number(r.prev_score),
+                prevScannedAt: r.prev_scanned_at === null ? null : Number(r.prev_scanned_at),
+                now,
+              }),
+        followed_at: Number(r.followed_at),
+      };
+    });
+  } catch (e) {
+    console.error("listFollowedAccounts failed:", e);
     return null;
   }
 }

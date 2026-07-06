@@ -3,6 +3,7 @@
 import { useLocale, useTranslations } from "next-intl";
 import { useRef, useState } from "react";
 import { SITE_URL } from "@/lib/site";
+import { trackEvent } from "@/lib/track";
 import { VsShareCard, type VsSide } from "./VsShareCard";
 import { createShareCardBlob } from "./shareCardExport";
 import { ShareCardExportHost } from "./ShareCardExportHost";
@@ -33,6 +34,7 @@ export function VsShare({
   const locale = useLocale();
   const cardRef = useRef<HTMLDivElement>(null);
   const [savingImg, setSavingImg] = useState(false);
+  const [embedCopied, setEmbedCopied] = useState(false);
 
   const link =
     locale === "en"
@@ -40,6 +42,23 @@ export function VsShare({
       : `${SITE_URL}/vs/${a.username}/${b.username}`;
   const shareText = t("shareText", { a: a.username, b: b.username });
   const fileName = () => `ghfind-vs-${a.username}-${b.username}.png`;
+
+  // README embed of the server-rendered battle card — the vs analog of
+  // CopyBadge. Canonical (locale-free) URLs so one snippet works for everyone;
+  // ref=vscard keeps click-throughs attributable (camo strips the Referer).
+  const embedAlt = `@${a.username} vs @${b.username} — GitHub Roast`;
+  const embedMd = `[![${embedAlt}](${SITE_URL}/api/card/vs/${a.username}/${b.username})](${SITE_URL}/vs/${a.username}/${b.username}?ref=vscard)`;
+
+  const copyEmbed = async () => {
+    try {
+      await navigator.clipboard.writeText(embedMd);
+      trackEvent("badge_copy", { surface: "vs", format: "md" });
+      setEmbedCopied(true);
+      setTimeout(() => setEmbedCopied(false), 2000);
+    } catch (e) {
+      console.error("copy vs embed failed:", e);
+    }
+  };
 
   const genBlob = async (): Promise<Blob | null> => {
     if (!cardRef.current) return null;
@@ -97,6 +116,12 @@ export function VsShare({
         className="rounded-full bg-orange-600/90 px-4 py-1.5 text-xs font-medium text-white hover:bg-orange-500 disabled:opacity-50"
       >
         {savingImg ? t("saving") : t("saveImage")}
+      </button>
+      <button
+        onClick={copyEmbed}
+        className="rounded-full border border-orange-400/40 px-4 py-1.5 text-xs font-medium text-orange-200 transition hover:bg-orange-500/10"
+      >
+        {embedCopied ? t("embedCopied") : t("copyEmbed")}
       </button>
       <ShareMenu link={link} text={shareText} onShareImage={shareImage} />
 

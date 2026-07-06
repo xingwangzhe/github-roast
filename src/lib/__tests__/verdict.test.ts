@@ -26,6 +26,8 @@ function acct(username: string, final: number, sub: Partial<SubScores> = {}): Ac
     roast: null,
     roast_en: null,
     scanned_at: 0,
+    prev_score: null,
+    prev_scanned_at: null,
   };
 }
 

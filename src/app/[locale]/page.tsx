@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { DeveloperCount } from "@/components/DeveloperCount";
+import { HomeFollowing } from "@/components/HomeFollowing";
 import { HomeLeaderboard } from "@/components/HomeLeaderboard";
 import { Roaster } from "@/components/Roaster";
 import { HomeFaq, getFaqItems } from "@/components/HomeFaq";
@@ -64,6 +65,11 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
       </header>
 
       <Roaster />
+
+      {/* Signed-in only: the accounts you follow + their weekly score moves.
+          Client island so the page stays force-static; renders nothing for
+          anonymous visitors. */}
+      <HomeFollowing />
 
       <Suspense
         fallback={

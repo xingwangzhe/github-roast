@@ -8,6 +8,7 @@ import { SITE_URL } from "@/lib/site";
 import { TIER_KEY, tierStyle } from "@/lib/tier";
 import { trackEvent } from "@/lib/track";
 import type { RoastLine, RoastMeta } from "@/lib/types";
+import { ChallengeCta } from "./ChallengeCta";
 import { CopyBadge } from "./CopyBadge";
 import { ProfileShare } from "./ProfileShare";
 import { TierAvatarFrame } from "./TierAvatarFrame";
@@ -159,6 +160,19 @@ export function RoastResultModal({
             tierLabel={tTier(`${tierKey}.blurb`)}
             beat={beat}
             tags={meta.tags ?? { zh: [], en: [] }}
+          />
+          {/* PK entry — "查别人" is the fastest-growing intent (search &gt; roast
+              in the funnel), so the share-first popup routes it straight into
+              the /vs loop instead of losing it at the modal. */}
+          <ChallengeCta
+            opponent={username}
+            source="modal"
+            variant="banner"
+            label={t("modalPkCta")}
+            goLabel={t("challengeGo")}
+            placeholder={t("challengePlaceholder")}
+            selfHint={t("challengeSelf")}
+            invalidHint={t("challengeInvalid")}
           />
           <button
             type="button"

@@ -120,6 +120,15 @@
     "profileCta": "Challenge them",
     "ownerCta": "Pull someone in to face me"
   },
+  "follow": {
+    "button": "Follow",
+    "following": "Following",
+    "limit": "You can follow up to 50 developers.",
+    "homeTitle": "Developers you follow",
+    "homeSub": "score moves this week",
+    "homeEmpty": "Follow developers from their profile page, then come back here to watch their scores move.",
+    "unrated": "unrated"
+  },
   "detail": {
     "back": "← Back to Hall of Fame",
     "backfilling": "🔍 Fetching their open-source footprint (repos / languages / contributions)…",
@@ -574,6 +583,8 @@
     "adviceHeading": "💡 How to level up",
     "saveImage": "📸 Save battle image",
     "saving": "Rendering…",
+    "copyEmbed": "🃏 Copy README embed",
+    "embedCopied": "✅ Copied — paste it into your README",
     "shareText": "{a} vs {b} — who's more hardcore? Watch this GitHub duel on ghfind.com ⚔️",
     "trendingHeading": "🔥 Trending battles",
     "trendingSub": "The most-watched GitHub developer PKs — tap in for the savage verdict",
