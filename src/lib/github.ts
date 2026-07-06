@@ -29,8 +29,40 @@ export class GitHubRateLimitError extends Error {}
 export class GitHubAuthRequiredError extends Error {}
 export class GitHubDataUnavailableError extends Error {}
 
-function authHeaders(): Record<string, string> {
-  const token = process.env.GITHUB_TOKEN;
+/** The GitHub PAT pool. `GITHUB_TOKEN` may hold a single token or a
+ *  comma-separated list (`ghp_a,ghp_b,ghp_c`); each token multiplies the
+ *  5000-point/hr GraphQL ceiling. Read at call time (not module load) so scripts
+ *  populating env via `_env.mjs` and tests mutating `process.env` still work. */
+export function githubTokens(): string[] {
+  return (process.env.GITHUB_TOKEN ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+/** Whether at least one PAT is configured — replaces the ad-hoc
+ *  `process.env.GITHUB_TOKEN` presence guards. */
+export function hasGithubToken(): boolean {
+  return githubTokens().length > 0;
+}
+
+// Round-robin cursor. Under Fluid Compute the warm instance persists this across
+// requests, so load spreads across the pool without any shared store. Reserve a
+// base offset per request (not per attempt) so a single request's retries walk
+// *distinct* tokens even when concurrent requests interleave their reservations.
+let rrIndex = 0;
+function nextOffset(): number {
+  return rrIndex++;
+}
+/** Next token in round-robin order, or undefined when the pool is empty. Used by
+ *  callers that don't rotate on failure (e.g. `authHeaders()` defaults). */
+function pickToken(): string | undefined {
+  const tokens = githubTokens();
+  if (tokens.length === 0) return undefined;
+  return tokens[nextOffset() % tokens.length];
+}
+
+function authHeaders(token = pickToken()): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
@@ -38,6 +70,77 @@ function authHeaders(): Record<string, string> {
   };
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
+}
+
+/** A response a *different* token might serve successfully, so ghFetch should
+ *  fail over rather than surface it:
+ *   - 429, or 403 with the quota drained / a Retry-After (primary or secondary
+ *     rate limit) — another token has its own budget;
+ *   - 401 (bad/expired token) — the picked PAT is rejected; another may be live;
+ *   - any 5xx (GitHub GraphQL intermittently 502s) — transient.
+ *  404 and scope-style 403s (no rate-limit signal) are definitive per-resource,
+ *  identical across tokens — never retried. */
+function retryable(res: Response): boolean {
+  if (res.status === 429 || res.status === 401 || res.status >= 500) return true;
+  if (res.status === 403) {
+    return (
+      res.headers.get("x-ratelimit-remaining") === "0" || res.headers.has("retry-after")
+    );
+  }
+  return false;
+}
+
+const RETRY_BACKOFF_MS = [250, 500, 1000];
+const MAX_RETRY_AFTER_MS = 2000; // don't stall a serverless invocation waiting
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Centralized GitHub fetch: attaches a round-robin token, and on a retryable
+ *  response (rate-limit / transient 5xx) fails over to the next token with
+ *  backoff. Callers interpret the *final* Response exactly as before, so the
+ *  same errors surface — but only once the whole pool is genuinely exhausted. */
+export async function ghFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const tokens = githubTokens();
+  // Single-token deploys still get one retry (helps transient 502s); multi-token
+  // pools rotate through every token, capped so a full outage can't spin.
+  const attempts = Math.min(Math.max(tokens.length, 2), 4);
+  // Reserve one base offset for this request; attempt i uses tokens[(base+i)%n].
+  // This keeps a request's own retries on distinct tokens regardless of what
+  // concurrent requests do to the shared cursor.
+  const base = nextOffset();
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    const token = tokens.length ? tokens[(base + i) % tokens.length] : undefined;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        ...init,
+        headers: { ...authHeaders(token), ...(init.headers ?? {}) },
+        cache: "no-store",
+      });
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) {
+        await sleep(RETRY_BACKOFF_MS[i] ?? 1000);
+        continue;
+      }
+      throw e;
+    }
+    if (retryable(res) && i < attempts - 1) {
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const wait =
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, MAX_RETRY_AFTER_MS)
+          : (RETRY_BACKOFF_MS[i] ?? 1000);
+      await sleep(wait);
+      continue;
+    }
+    return res;
+  }
+  // Unreachable: the loop returns or throws on the last attempt.
+  throw lastErr ?? new GitHubDataUnavailableError("GitHub request failed.");
 }
 
 interface RestRepo {
@@ -100,11 +203,9 @@ interface RestUser {
 async function restGet<T>(path: string): Promise<T | null> {
   let res: Response;
   try {
-    res = await fetch(`${GITHUB_API}/${path}`, {
-      headers: authHeaders(),
-      // Edge/runtime caching is handled by our own Redis layer; skip Next cache.
-      cache: "no-store",
-    });
+    // Edge/runtime caching is handled by our own Redis layer; skip Next cache
+    // (ghFetch already sets cache: "no-store"). ghFetch rotates tokens + retries.
+    res = await ghFetch(`${GITHUB_API}/${path}`);
   } catch {
     return null;
   }
@@ -126,15 +227,13 @@ async function graphql<T>(
   query: string,
   variables: Record<string, unknown>,
 ): Promise<T> {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new GitHubAuthRequiredError("GITHUB_TOKEN is required.");
+  if (!hasGithubToken()) throw new GitHubAuthRequiredError("GITHUB_TOKEN is required.");
   let res: Response;
   try {
-    res = await fetch(`${GITHUB_API}/graphql`, {
+    res = await ghFetch(`${GITHUB_API}/graphql`, {
       method: "POST",
-      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, variables }),
-      cache: "no-store",
     });
   } catch {
     throw new GitHubDataUnavailableError("GitHub GraphQL request failed.");
@@ -162,14 +261,13 @@ async function graphql<T>(
 }
 
 async function fetchOrganizations(username: string): Promise<string[]> {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) return [];
+  if (!hasGithubToken()) return [];
 
   let res: Response;
   try {
-    res = await fetch(`${GITHUB_API}/graphql`, {
+    res = await ghFetch(`${GITHUB_API}/graphql`, {
       method: "POST",
-      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         query: `query($login: String!) {
           user(login: $login) {
@@ -178,7 +276,6 @@ async function fetchOrganizations(username: string): Promise<string[]> {
         }`,
         variables: { login: username },
       }),
-      cache: "no-store",
     });
   } catch {
     return [];
@@ -1477,7 +1574,7 @@ export async function collect(username: string): Promise<{
   pinned_repos: string[];
   organizations: string[];
 }> {
-  if (!process.env.GITHUB_TOKEN) {
+  if (!hasGithubToken()) {
     throw new GitHubAuthRequiredError("GITHUB_TOKEN is required for accurate scoring.");
   }
 

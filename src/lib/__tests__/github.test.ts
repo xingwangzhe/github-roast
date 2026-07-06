@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   boundedContributionYearsActive,
   collect,
+  ghFetch,
+  githubTokens,
   GitHubDataUnavailableError,
+  hasGithubToken,
 } from "../github";
 
 const originalToken = process.env.GITHUB_TOKEN;
@@ -526,5 +529,117 @@ ${"Useful project detail. ".repeat(50)}
 
     expect(result.organizations).toEqual([]);
     expect(result.metrics.username).toBe("alice");
+  });
+});
+
+describe("githubTokens / token pool", () => {
+  afterEach(() => {
+    if (originalToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = originalToken;
+    vi.unstubAllGlobals();
+  });
+
+  it("parses a single token", () => {
+    process.env.GITHUB_TOKEN = "ghp_solo";
+    expect(githubTokens()).toEqual(["ghp_solo"]);
+    expect(hasGithubToken()).toBe(true);
+  });
+
+  it("parses a comma-separated pool, trimming whitespace and dropping empties", () => {
+    process.env.GITHUB_TOKEN = " ghp_a , ghp_b ,, ghp_c ,";
+    expect(githubTokens()).toEqual(["ghp_a", "ghp_b", "ghp_c"]);
+  });
+
+  it("treats an absent or blank token as an empty pool", () => {
+    delete process.env.GITHUB_TOKEN;
+    expect(githubTokens()).toEqual([]);
+    expect(hasGithubToken()).toBe(false);
+    process.env.GITHUB_TOKEN = "   ,  , ";
+    expect(githubTokens()).toEqual([]);
+    expect(hasGithubToken()).toBe(false);
+  });
+});
+
+describe("ghFetch rotation + failover", () => {
+  afterEach(() => {
+    if (originalToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = originalToken;
+    vi.unstubAllGlobals();
+  });
+
+  function authOf(init?: RequestInit): string | undefined {
+    return (init?.headers as Record<string, string> | undefined)?.Authorization;
+  }
+
+  it("round-robins the Authorization token across sequential requests", async () => {
+    process.env.GITHUB_TOKEN = "t1,t2,t3";
+    const seen: (string | undefined)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init?: RequestInit) => {
+        seen.push(authOf(init));
+        return jsonResponse({ ok: true });
+      }),
+    );
+
+    // Three successful (non-retried) requests should touch three distinct tokens.
+    await ghFetch("https://api.github.com/x");
+    await ghFetch("https://api.github.com/x");
+    await ghFetch("https://api.github.com/x");
+
+    expect(new Set(seen)).toEqual(new Set(["Bearer t1", "Bearer t2", "Bearer t3"]));
+  });
+
+  it("fails over to the next token on a drained rate limit and returns the eventual 200", async () => {
+    process.env.GITHUB_TOKEN = "t1,t2";
+    const auths: (string | undefined)[] = [];
+    const fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      auths.push(authOf(init));
+      if (auths.length === 1) {
+        // Hard rate limit: 403 with the quota drained → retryable.
+        return new Response("{}", {
+          status: 403,
+          headers: { "x-ratelimit-remaining": "0" },
+        });
+      }
+      return jsonResponse({ recovered: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await ghFetch("https://api.github.com/x");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ recovered: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The retry used a *different* token than the rate-limited attempt.
+    expect(auths[0]).not.toBe(auths[1]);
+  });
+
+  it("fails over past a rejected (401) token to a live one", async () => {
+    process.env.GITHUB_TOKEN = "dead,live";
+    const auths: (string | undefined)[] = [];
+    const fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      auths.push(authOf(init));
+      if (auths.length === 1) return new Response("{}", { status: 401 });
+      return jsonResponse({ ok: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await ghFetch("https://api.github.com/x");
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(auths[0]).not.toBe(auths[1]);
+  });
+
+  it("does not retry a definitive 404", async () => {
+    process.env.GITHUB_TOKEN = "t1,t2";
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await ghFetch("https://api.github.com/x");
+
+    expect(res.status).toBe(404);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
