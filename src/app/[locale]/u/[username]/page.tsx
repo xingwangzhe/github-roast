@@ -46,7 +46,9 @@ import { ProfileLandingBeacon } from "@/components/ProfileLandingBeacon";
 import { ChallengeCta } from "@/components/ChallengeCta";
 import { FollowButton } from "@/components/FollowButton";
 import { FacetRankLink } from "@/components/FacetRankLink";
+import { CommonProjects } from "@/components/CommonProjects";
 import { auth, authConfigured } from "@/lib/auth";
+import { getDeveloperCommonProjectsCached } from "@/lib/project-discovery";
 
 /** True when a Referer header points at github.com (or a subdomain). GitHub sends
  *  `strict-origin-when-cross-origin`, so we only ever see the bare origin — enough
@@ -227,6 +229,19 @@ export default async function AccountPage({
       getUserMatchups(d.username),
       getFacetRank(d.username, d.final_score),
     ]);
+  const commonProjects = Array.from(
+    new Map(
+      (
+        await Promise.all(
+          similar.slice(0, 3).map((account) =>
+            getDeveloperCommonProjectsCached(d.username, account.username, 3),
+          ),
+        )
+      )
+        .flat()
+        .map((project) => [project.repo.repo_key, project]),
+    ).values(),
+  ).slice(0, 6);
   // Inline re-detect is self-service: only the signed-in owner sees it on their
   // own profile. GitHub handles are case-insensitive, so compare normalized.
   const isOwner =
@@ -323,6 +338,40 @@ export default async function AccountPage({
     notation: "compact",
     maximumFractionDigits: 1,
   });
+  const similarSection = similar.length > 0 && (
+    <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
+      <h2 className="mb-1 text-base font-bold text-zinc-200">{t("similarHeading")}</h2>
+      <p className="mb-4 text-xs text-zinc-400">{t("similarSub")}</p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {similar.map((s) => {
+          const st = tierStyle(s.tier);
+          const tag = lang === "en" ? s.tags.en[0] : s.tags.zh[0];
+          return (
+            <Link
+              key={s.username}
+              href={`/u/${s.username}`}
+              prefetch={false}
+              className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 hover:bg-white/[0.06]"
+            >
+              {s.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={s.avatar_url} alt={s.username} className="h-8 w-8 shrink-0 rounded-full" />
+              ) : (
+                <div className="h-8 w-8 shrink-0 rounded-full bg-white/10" />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-zinc-200">@{s.username}</div>
+                {tag && <div className="truncate text-[11px] text-orange-200/80">#{tag}</div>}
+              </div>
+              <span className={`shrink-0 text-right text-sm font-black tabular-nums ${st.text}`}>
+                {st.emoji} {s.final_score.toFixed(2)}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
 
   return (
     <main className="relative isolate flex w-full flex-1 justify-center px-5 py-14 sm:py-20">
@@ -658,6 +707,10 @@ export default async function AccountPage({
         </section>
       )}
 
+      <CommonProjects projects={commonProjects} />
+
+      {similarSection}
+
       {/* Stack & domains — aggregated language mix + topic tags. */}
       {(languages.length > 0 || topics.length > 0) && (
         <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
@@ -698,44 +751,6 @@ export default async function AccountPage({
               </div>
             </div>
           )}
-        </section>
-      )}
-
-      {/* Similar developers — same profile shape, nearby score */}
-      {similar.length > 0 && (
-        <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
-          <h2 className="mb-1 text-base font-bold text-zinc-200">{t("similarHeading")}</h2>
-          <p className="mb-4 text-xs text-zinc-400">{t("similarSub")}</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {similar.map((s) => {
-              const st = tierStyle(s.tier);
-              const tag = lang === "en" ? s.tags.en[0] : s.tags.zh[0];
-              return (
-                <Link
-                  key={s.username}
-                  href={`/u/${s.username}`}
-                  prefetch={false}
-                  className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 hover:bg-white/[0.06]"
-                >
-                  {s.avatar_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.avatar_url} alt={s.username} className="h-8 w-8 shrink-0 rounded-full" />
-                  ) : (
-                    <div className="h-8 w-8 shrink-0 rounded-full bg-white/10" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-zinc-200">@{s.username}</div>
-                    {tag && (
-                      <div className="truncate text-[11px] text-orange-200/80">#{tag}</div>
-                    )}
-                  </div>
-                  <span className={`shrink-0 text-right text-sm font-black tabular-nums ${st.text}`}>
-                    {st.emoji} {s.final_score.toFixed(2)}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
         </section>
       )}
 

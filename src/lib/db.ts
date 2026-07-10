@@ -1756,12 +1756,12 @@ export async function getRelatedProjects(repoKey: string, limit = 6): Promise<Re
       shared.rows.map((row) => [String(row.repo_key), Number(row.shared_count)]),
     );
     const keys = [...sharedCounts.keys()];
-    const projects = await queryProjectItems(db, {
+    const sharedProjects = await queryProjectItems(db, {
       sort: "quality",
       repoKeys: keys,
       limit: keys.length || 1,
     });
-    return projects
+    const rankedShared = sharedProjects
       .sort(
         (a, b) =>
           (sharedCounts.get(b.repo.repo_key) ?? 0) -
@@ -1773,6 +1773,26 @@ export async function getRelatedProjects(repoKey: string, limit = 6): Promise<Re
         project,
         sharedContributorCount: sharedCounts.get(project.repo.repo_key) ?? 0,
       }));
+    if (rankedShared.length >= limit) return rankedShared;
+
+    const target = await db.execute({
+      sql: `SELECT language FROM repos WHERE repo_key = ? LIMIT 1`,
+      args: [key],
+    });
+    const language = (target.rows[0]?.language as string | null) ?? null;
+    if (!language) return rankedShared;
+    const fallback = await queryProjectItems(db, {
+      sort: "quality",
+      language,
+      limit: Math.max(limit * 2, 12),
+    });
+    const seen = new Set([key, ...rankedShared.map((item) => item.project.repo.repo_key)]);
+    return [
+      ...rankedShared,
+      ...fallback
+        .filter((project) => !seen.has(project.repo.repo_key))
+        .map((project) => ({ project, sharedContributorCount: 0 })),
+    ].slice(0, limit);
   } catch (e) {
     console.error("getRelatedProjects failed:", e);
     return [];

@@ -157,6 +157,24 @@
     "emptyTitle": "这里还没有项目图谱",
     "emptyBody": "请先在本地运行项目回填，或移除当前筛选条件。"
   },
+  "discoveryNext": {
+    "relatedTitle": "继续探索",
+    "relatedSubtitle": "按共同贡献者或相同语言找到相关项目。",
+    "sharedContributors": "{count} 位共同贡献者",
+    "sameLanguage": "同语言项目",
+    "commonTitle": "他们共同参与的项目",
+    "commonSubtitle": "看看这位开发者与相似开发者在哪些项目相遇。",
+    "projects": {
+      "title": "继续看项目",
+      "body": "发现由高质量贡献者团队推动的 GitHub 项目。",
+      "cta": "浏览项目榜"
+    },
+    "organizations": {
+      "title": "继续看组织",
+      "body": "沿着榜单探索开发者背后的团队与开源社区。",
+      "cta": "浏览组织"
+    }
+  },
   "challenge": {
     "bannerTitle": "从 @{owner} 的主页来的？测测你在 TA 面前是什么成色",
     "cta": "和 TA 对线",

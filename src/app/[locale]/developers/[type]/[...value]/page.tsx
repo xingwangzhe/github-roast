@@ -10,8 +10,10 @@ import {
 import { FacetBoardPinFromQuery } from "@/components/FacetBoardPin";
 import { RepoOverviewCard, type RepoOverviewLabels } from "@/components/RepoOverviewCard";
 import { RepoPageBeacon } from "@/components/RepoPageBeacon";
+import { ProjectRecommendations } from "@/components/ProjectRecommendations";
 import { getDevelopersByFacetCached } from "@/lib/developers";
 import { DEVELOPERS_PER_FACET_LIMIT, getRepoOverview } from "@/lib/db";
+import { getRelatedProjectsCached } from "@/lib/project-discovery";
 import type { FacetType } from "@/lib/facets";
 import { TIER_KEY } from "@/lib/tier";
 import type { Tier } from "@/lib/types";
@@ -101,9 +103,11 @@ export default async function FacetBucketPage({
   // Project pages lead with a repo header + contributor-quality summary. Only
   // repo buckets have a repo entity; language/org buckets skip it. Null when the
   // repo isn't in the graph yet — the page then degrades to the plain list.
-  const overview = type === "repo" ? await getRepoOverview(value) : null;
-
-  const entries = await getDevelopersByFacetCached(type, value);
+  const [overview, entries, relatedProjects] = await Promise.all([
+    type === "repo" ? getRepoOverview(value) : Promise.resolve(null),
+    getDevelopersByFacetCached(type, value),
+    type === "repo" ? getRelatedProjectsCached(value) : Promise.resolve([]),
+  ]);
 
   const localePrefix = locale === "en" ? "/en" : "";
   const encodedPath = value.split("/").map(encodeURIComponent).join("/");
@@ -186,6 +190,8 @@ export default async function FacetBucketPage({
         heatEntries={[]}
         trendingEntries={[]}
       />
+
+      {type === "repo" && <ProjectRecommendations projects={relatedProjects} />}
 
       <p className="mt-10 text-sm text-zinc-500">
         {t("apiCta")}{" "}

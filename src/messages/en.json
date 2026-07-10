@@ -157,6 +157,24 @@
     "emptyTitle": "No project graph here yet",
     "emptyBody": "Run the repository backfill locally or remove the current filter."
   },
+  "discoveryNext": {
+    "relatedTitle": "Keep exploring",
+    "relatedSubtitle": "Projects connected by contributors or language.",
+    "sharedContributors": "{count} shared contributors",
+    "sameLanguage": "Same language",
+    "commonTitle": "Projects they have in common",
+    "commonSubtitle": "Shared work between this developer and similar profiles.",
+    "projects": {
+      "title": "Explore projects",
+      "body": "See which repositories are backed by high-quality contributor teams.",
+      "cta": "Browse project rankings"
+    },
+    "organizations": {
+      "title": "Explore organizations",
+      "body": "Continue through the teams and communities behind the leaderboard.",
+      "cta": "Browse organizations"
+    }
+  },
   "challenge": {
     "bannerTitle": "Came from @{owner}'s profile? See how you stack up against them",
     "cta": "Challenge them",

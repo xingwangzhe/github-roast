@@ -10,6 +10,7 @@ import {
   type LeaderboardWindow,
 } from "@/lib/leaderboardWindow";
 import { type LeaderboardView } from "@/components/LeaderboardClient";
+import { DiscoveryNextSteps } from "@/components/DiscoveryNextSteps";
 
 const WINDOW_LABEL_KEY: Record<LeaderboardWindow, string> = {
   "24h": "window24h",
@@ -136,6 +137,8 @@ export default async function LeaderboardPage({
       </header>
 
       <Leaderboard pageSize={20} initialView={view} timeWindow={timeWindow} />
+
+      <DiscoveryNextSteps />
 
       <footer className="mt-12 text-center text-xs leading-relaxed text-zinc-600">
         {t.rich("footerNote", {

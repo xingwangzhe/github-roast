@@ -449,6 +449,12 @@ describe("project discovery queries", () => {
         language: "Rust",
         topics: ["database"],
       }),
+      rustPeer: repo("discover/rust-peer", {
+        stars: 600,
+        name: "RustPeer",
+        language: "Rust",
+        topics: ["database"],
+      }),
     };
     const score = async (username: string, finalScore: number, tier: ScoreEntry["tier"]) =>
       db.recordScore({ ...entry, username, final_score: finalScore, tier });
@@ -461,6 +467,7 @@ describe("project discovery queries", () => {
       score("discover-eve", 72, "人上人"),
       score("discover-hot", 65, "人上人"),
       score("discover-star", 80, "顶级"),
+      score("discover-rust", 78, "顶级"),
       score("discover-hidden", 100, "夯"),
       score("discover-low", 50, "NPC"),
     ]);
@@ -496,6 +503,12 @@ describe("project discovery queries", () => {
     await db.recordRepoGraph("discover-star", {
       repos: [repos.stars],
       links: [{ repo_key: repos.stars.repo_key, relation: "owner", commits: null, prs: null, weight: 50_000 }],
+    });
+    await db.recordRepoGraph("discover-rust", {
+      repos: [repos.rustPeer],
+      links: [
+        { repo_key: repos.rustPeer.repo_key, relation: "owner", commits: null, prs: null, weight: 600 },
+      ],
     });
     for (const username of ["discover-hidden", "discover-low"]) {
       await db.recordRepoGraph(username, {
@@ -534,7 +547,10 @@ describe("project discovery queries", () => {
     expect(stars[0]?.repo.repo_key).toBe("discover/stars");
 
     const rust = await db.getProjects({ sort: "quality", language: "Rust", limit: 20 });
-    expect(rust.map((p) => p.repo.repo_key)).toEqual(["discover/stars"]);
+    expect(rust.map((p) => p.repo.repo_key)).toEqual([
+      "discover/stars",
+      "discover/rust-peer",
+    ]);
 
     const first = await db.getProjects({ sort: "stars", limit: 1, offset: 0 });
     const second = await db.getProjects({ sort: "stars", limit: 1, offset: 1 });
@@ -553,6 +569,12 @@ describe("project discovery queries", () => {
     const related = await db.getRelatedProjects("discover/quality", 4);
     expect(related[0]?.project.repo.repo_key).toBe("discover/related");
     expect(related[0]?.sharedContributorCount).toBe(2);
+  });
+
+  it("falls back to same-language projects when contributors do not overlap", async () => {
+    const related = await db.getRelatedProjects("discover/stars", 4);
+    expect(related[0]?.project.repo.repo_key).toBe("discover/rust-peer");
+    expect(related[0]?.sharedContributorCount).toBe(0);
   });
 
   it("finds projects shared by two developers", async () => {
