@@ -8,9 +8,13 @@ import {
   type LeaderboardLabels,
 } from "@/components/LeaderboardClient";
 import { FacetBoardPinFromQuery } from "@/components/FacetBoardPin";
+import { RepoOverviewCard, type RepoOverviewLabels } from "@/components/RepoOverviewCard";
+import { RepoPageBeacon } from "@/components/RepoPageBeacon";
 import { getDevelopersByFacetCached } from "@/lib/developers";
-import { DEVELOPERS_PER_FACET_LIMIT } from "@/lib/db";
+import { DEVELOPERS_PER_FACET_LIMIT, getRepoOverview } from "@/lib/db";
 import type { FacetType } from "@/lib/facets";
+import { TIER_KEY } from "@/lib/tier";
+import type { Tier } from "@/lib/types";
 import { localeAlternates } from "@/lib/site";
 import { JsonLd, breadcrumbJsonLd } from "@/components/JsonLd";
 
@@ -92,6 +96,12 @@ export default async function FacetBucketPage({
   setRequestLocale(locale);
   const t = await getTranslations("developers");
   const tl = await getTranslations("leaderboard");
+  const tTier = await getTranslations("tiers");
+
+  // Project pages lead with a repo header + contributor-quality summary. Only
+  // repo buckets have a repo entity; language/org buckets skip it. Null when the
+  // repo isn't in the graph yet — the page then degrades to the plain list.
+  const overview = type === "repo" ? await getRepoOverview(value) : null;
 
   const entries = await getDevelopersByFacetCached(type, value);
 
@@ -140,6 +150,26 @@ export default async function FacetBucketPage({
           {t("bucketSubtitle", { limit: DEVELOPERS_PER_FACET_LIMIT })}
         </p>
       </header>
+
+      {overview && (
+        <>
+          <RepoPageBeacon repo={overview.repo.name_with_owner} />
+          <RepoOverviewCard
+            overview={overview}
+            labels={{
+              authoredBy: t("repoAuthoredBy"),
+              contributors: t("repoContributors"),
+              avgScore: t("repoAvgScore"),
+              tierLabels: Object.fromEntries(
+                (Object.keys(TIER_KEY) as Tier[]).map((tier) => [
+                  tier,
+                  tTier(`${TIER_KEY[tier]}.name`),
+                ]),
+              ) as RepoOverviewLabels["tierLabels"],
+            }}
+          />
+        </>
+      )}
 
       <Suspense fallback={null}>
         <FacetBoardPinFromQuery

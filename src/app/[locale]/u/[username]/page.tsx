@@ -14,6 +14,7 @@ import {
   getRank,
   getSimilarAccounts,
   getUserMatchups,
+  filterExistingRepoKeys,
 } from "@/lib/db";
 import { getCachedScan } from "@/lib/redis";
 import { aggregateLanguages, collectTopics } from "@/lib/profile-insights";
@@ -40,6 +41,7 @@ import { ProfileReactionsSection } from "@/components/ProfileReactionsSection";
 import { RescanButton } from "@/components/RescanButton";
 import { ProfileBackfill } from "@/components/ProfileBackfill";
 import { BadgeReferralBanner } from "@/components/BadgeReferralBanner";
+import { RepoCardLink } from "@/components/RepoCardLink";
 import { ProfileLandingBeacon } from "@/components/ProfileLandingBeacon";
 import { ChallengeCta } from "@/components/ChallengeCta";
 import { FollowButton } from "@/components/FollowButton";
@@ -297,6 +299,24 @@ export default async function AccountPage({
   const languages = snap ? aggregateLanguages(snap.top_repos) : [];
   const topics = snap ? collectTopics(snap.top_repos) : [];
   const organizations = snap?.organizations ?? [];
+  // Repo cards route into their internal project page (reclaiming the click that
+  // otherwise leaks to github.com) — but only where a project page has content,
+  // i.e. the repo exists as a first-class `repos` row. One indexed lookup over
+  // both featured (own) and impact (contributed) repos; failure → empty set → all
+  // cards keep their external GitHub links (pre-Phase-B behavior).
+  const featuredKey = (r: (typeof featuredRepos)[number]) =>
+    (r.name_with_owner ?? `${d.username}/${r.name}`).toLowerCase();
+  const existingRepoKeys = snap
+    ? await filterExistingRepoKeys([
+        ...featuredRepos.map(featuredKey),
+        ...impactRepos.map((r) => r.repo.toLowerCase()),
+      ])
+    : new Set<string>();
+  /** Locale-relative internal project page path for an "owner/name" key. */
+  const repoHref = (key: string) => {
+    const [owner, name] = key.split("/");
+    return `/developers/repo/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+  };
   const bio = snap?.bio ?? null;
   const company = snap?.company ?? null;
   const nf = new Intl.NumberFormat(locale === "en" ? "en" : "zh", {
@@ -529,29 +549,50 @@ export default async function AccountPage({
           <h2 className="mb-1 text-base font-bold text-amber-200">{t("impactHeading")}</h2>
           <p className="mb-4 text-xs text-zinc-400">{t("impactSub")}</p>
           <div className="flex flex-col gap-2">
-            {impactRepos.map((r) => (
-              <a
-                key={r.repo}
-                href={`https://github.com/${r.repo}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 hover:bg-white/[0.06]"
-              >
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-200">
-                  {r.repo}
-                </span>
-                <span className="shrink-0 text-xs tabular-nums text-zinc-400">
-                  ⭐ {nf.format(r.stars)}
-                  {(r.commits > 0 || r.prs > 0) && (
-                    <span className="ml-2 text-zinc-500">
-                      {r.commits > 0 && `${nf.format(r.commits)} ${t("commits")}`}
-                      {r.commits > 0 && r.prs > 0 && " · "}
-                      {r.prs > 0 && `${nf.format(r.prs)} ${t("prs")}`}
-                    </span>
-                  )}
-                </span>
-              </a>
-            ))}
+            {impactRepos.map((r) => {
+              const key = r.repo.toLowerCase();
+              const internal = existingRepoKeys.has(key);
+              const cardClass =
+                "flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 hover:bg-white/[0.06]";
+              const inner = (
+                <>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-200">
+                    {r.repo}
+                  </span>
+                  <span className="shrink-0 text-xs tabular-nums text-zinc-400">
+                    ⭐ {nf.format(r.stars)}
+                    {(r.commits > 0 || r.prs > 0) && (
+                      <span className="ml-2 text-zinc-500">
+                        {r.commits > 0 && `${nf.format(r.commits)} ${t("commits")}`}
+                        {r.commits > 0 && r.prs > 0 && " · "}
+                        {r.prs > 0 && `${nf.format(r.prs)} ${t("prs")}`}
+                      </span>
+                    )}
+                  </span>
+                </>
+              );
+              return internal ? (
+                <RepoCardLink
+                  key={r.repo}
+                  href={repoHref(key)}
+                  repo={r.repo}
+                  surface="impact"
+                  className={cardClass}
+                >
+                  {inner}
+                </RepoCardLink>
+              ) : (
+                <a
+                  key={r.repo}
+                  href={`https://github.com/${r.repo}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cardClass}
+                >
+                  {inner}
+                </a>
+              );
+            })}
           </div>
         </section>
       )}
@@ -568,30 +609,51 @@ export default async function AccountPage({
           <h2 className="mb-1 text-base font-bold text-zinc-200">{t("worksHeading")}</h2>
           <p className="mb-4 text-xs text-zinc-400">{t("worksSub")}</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {featuredRepos.map((r) => (
-              <a
-                key={r.name}
-                href={`https://github.com/${d.username}/${r.name}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex flex-col gap-1 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 hover:bg-white/[0.06]"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-200">
-                    {r.name}
-                  </span>
-                  <span className="shrink-0 text-xs tabular-nums text-zinc-400">
-                    ⭐ {nf.format(r.stars)}
-                  </span>
-                </div>
-                {r.description && (
-                  <p className="line-clamp-2 text-xs text-zinc-400">{r.description}</p>
-                )}
-                {r.language && (
-                  <span className="text-[11px] text-zinc-400">{r.language}</span>
-                )}
-              </a>
-            ))}
+            {featuredRepos.map((r) => {
+              const key = featuredKey(r);
+              const internal = existingRepoKeys.has(key);
+              const cardClass =
+                "flex flex-col gap-1 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 hover:bg-white/[0.06]";
+              const inner = (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-200">
+                      {r.name}
+                    </span>
+                    <span className="shrink-0 text-xs tabular-nums text-zinc-400">
+                      ⭐ {nf.format(r.stars)}
+                    </span>
+                  </div>
+                  {r.description && (
+                    <p className="line-clamp-2 text-xs text-zinc-400">{r.description}</p>
+                  )}
+                  {r.language && (
+                    <span className="text-[11px] text-zinc-400">{r.language}</span>
+                  )}
+                </>
+              );
+              return internal ? (
+                <RepoCardLink
+                  key={r.name}
+                  href={repoHref(key)}
+                  repo={key}
+                  surface="featured"
+                  className={cardClass}
+                >
+                  {inner}
+                </RepoCardLink>
+              ) : (
+                <a
+                  key={r.name}
+                  href={`https://github.com/${d.username}/${r.name}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cardClass}
+                >
+                  {inner}
+                </a>
+              );
+            })}
           </div>
         </section>
       )}

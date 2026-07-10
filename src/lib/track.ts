@@ -28,7 +28,13 @@ export type TrackEvent =
   | "scan_complete" // /api/scan returned a score (pre-roast)
   | "badge_copy" // a README badge/card snippet was copied
   | "share_click" // a share channel was picked (platform / copy / native / image)
-  | "roast_reveal"; // homepage handoff popped the result modal over a cached roast
+  | "roast_reveal" // homepage handoff popped the result modal over a cached roast
+  // Project discovery (Phase B) — the /developers/repo project page and the
+  // profile→project links that feed it, so the "developer ↔ project" loop is
+  // measurable: repo_page_view carries a client-classified `source`, and
+  // repo_card_click marks a profile repo card that routed into a project page.
+  | "repo_page_view"
+  | "repo_card_click";
 
 type VaWindow = Window & {
   va?: (...params: unknown[]) => void;

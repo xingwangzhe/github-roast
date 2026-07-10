@@ -107,7 +107,10 @@
     "metaDescription": "Browse top GitHub developers by programming language, project, and organization.",
     "bucketMetaDescription": "The highest-scoring GitHub developers in {value}.",
     "apiCta": "Vetting candidates in bulk? Every score on this board comes from the ghfind API — deterministic 0-100 trust scoring for any GitHub account, free for moderate use.",
-    "apiCtaLink": "API docs →"
+    "apiCtaLink": "API docs →",
+    "repoAuthoredBy": "Maintained by",
+    "repoContributors": "ranked contributors",
+    "repoAvgScore": "avg score"
   },
   "challenge": {
     "bannerTitle": "Came from @{owner}'s profile? See how you stack up against them",
@@ -301,11 +304,26 @@
     "brand": "🔥 ghfind · see how you stack up"
   },
   "tiers": {
-    "god": { "name": "GOD", "blurb": "Legendary · Hall of Fame" },
-    "elite": { "name": "ELITE", "blurb": "Elite · Top-tier dev" },
-    "solid": { "name": "SOLID", "blurb": "Solid · Trustworthy" },
-    "npc": { "name": "NPC", "blurb": "Average · Unremarkable" },
-    "trash": { "name": "TRASH", "blurb": "Low-value · Likely farmed" }
+    "god": {
+      "name": "GOD",
+      "blurb": "Legendary · Hall of Fame"
+    },
+    "elite": {
+      "name": "ELITE",
+      "blurb": "Elite · Top-tier dev"
+    },
+    "solid": {
+      "name": "SOLID",
+      "blurb": "Solid · Trustworthy"
+    },
+    "npc": {
+      "name": "NPC",
+      "blurb": "Average · Unremarkable"
+    },
+    "trash": {
+      "name": "TRASH",
+      "blurb": "Low-value · Likely farmed"
+    }
   },
   "dimensions": {
     "account_maturity": "Account maturity",
@@ -445,39 +463,102 @@
     "restHeading": "ghfind REST API",
     "restIntro": "Base URL: https://ghfind.com. Scoring reads need no authentication. Errors are structured JSON ({error, message, hint}), responses carry RateLimit-* headers, and list endpoints support limit/offset pagination.",
     "endpoints": [
-      { "sig": "GET /api/score/{username}", "desc": "Deterministic 0-100 score, tier, and six-dimension breakdown. Scores unseen accounts live; no auth, no LLM." },
-      { "sig": "POST /api/scan", "desc": "Full deterministic scan payload: raw metrics, top repositories, recent pull requests, red flags, sub-scores." },
-      { "sig": "POST /api/roast", "desc": "AI-written roast report (the only LLM endpoint; supports bring-your-own key)." },
-      { "sig": "POST /api/vs-verdict", "desc": "Head-to-head verdict for two accounts." },
-      { "sig": "GET /api/leaderboard", "desc": "Ranked developers by trending, score, heat, or progress; paginated via limit/offset." },
-      { "sig": "GET /api/developers", "desc": "Developer directory by language, organization, or contributed repository; paginated." },
-      { "sig": "GET /api/search-users", "desc": "Prefix search across already-scored accounts." },
-      { "sig": "GET /api/stats", "desc": "Platform totals (number of scored accounts)." },
-      { "sig": "GET /api/badge/{username}", "desc": "SVG score badge to embed in a README." }
+      {
+        "sig": "GET /api/score/{username}",
+        "desc": "Deterministic 0-100 score, tier, and six-dimension breakdown. Scores unseen accounts live; no auth, no LLM."
+      },
+      {
+        "sig": "POST /api/scan",
+        "desc": "Full deterministic scan payload: raw metrics, top repositories, recent pull requests, red flags, sub-scores."
+      },
+      {
+        "sig": "POST /api/roast",
+        "desc": "AI-written roast report (the only LLM endpoint; supports bring-your-own key)."
+      },
+      {
+        "sig": "POST /api/vs-verdict",
+        "desc": "Head-to-head verdict for two accounts."
+      },
+      {
+        "sig": "GET /api/leaderboard",
+        "desc": "Ranked developers by trending, score, heat, or progress; paginated via limit/offset."
+      },
+      {
+        "sig": "GET /api/developers",
+        "desc": "Developer directory by language, organization, or contributed repository; paginated."
+      },
+      {
+        "sig": "GET /api/search-users",
+        "desc": "Prefix search across already-scored accounts."
+      },
+      {
+        "sig": "GET /api/stats",
+        "desc": "Platform totals (number of scored accounts)."
+      },
+      {
+        "sig": "GET /api/badge/{username}",
+        "desc": "SVG score badge to embed in a README."
+      }
     ],
     "mcpHeading": "ghfind MCP server",
     "mcpIntro": "A Streamable HTTP Model Context Protocol server lives at https://ghfind.com/mcp (no auth, per-IP rate limited, read-only). Add it to Claude, Cursor, or any MCP client to score and compare GitHub accounts from inside the agent.",
     "tools": [
-      { "name": "score_user", "desc": "0-100 score, tier, and six-dimension breakdown for any GitHub login." },
-      { "name": "scan_user", "desc": "Full scan payload: metrics, top repos, recent PRs, red flags." },
-      { "name": "compare_users", "desc": "Deterministic head-to-head comparison with winner and score gap." },
-      { "name": "get_leaderboard", "desc": "Ranked public developers for discovery." },
-      { "name": "search_users", "desc": "Prefix search over scored accounts." }
+      {
+        "name": "score_user",
+        "desc": "0-100 score, tier, and six-dimension breakdown for any GitHub login."
+      },
+      {
+        "name": "scan_user",
+        "desc": "Full scan payload: metrics, top repos, recent PRs, red flags."
+      },
+      {
+        "name": "compare_users",
+        "desc": "Deterministic head-to-head comparison with winner and score gap."
+      },
+      {
+        "name": "get_leaderboard",
+        "desc": "Ranked public developers for discovery."
+      },
+      {
+        "name": "search_users",
+        "desc": "Prefix search over scored accounts."
+      }
     ],
     "authHeading": "Authentication",
     "authBody": "Read endpoints are public. Write endpoints (POST /api/scan, POST /api/roast) accept a browser Turnstile verification or a Bearer API key. Agents should read the machine walkthrough at /auth.md.",
     "sdkHeading": "Official SDKs & CLI",
     "sdks": [
-      { "name": "@hikariming/ghfind (npm)", "desc": "JavaScript / TypeScript SDK and CLI: npm install -g @hikariming/ghfind" },
-      { "name": "ghfind (PyPI)", "desc": "Python SDK: pip install --upgrade ghfind" },
-      { "name": "ghfind CLI", "desc": "ghfind score {username} -o json · ghfind scan · ghfind roast · ghfind leaderboard · ghfind stats" }
+      {
+        "name": "@hikariming/ghfind (npm)",
+        "desc": "JavaScript / TypeScript SDK and CLI: npm install -g @hikariming/ghfind"
+      },
+      {
+        "name": "ghfind (PyPI)",
+        "desc": "Python SDK: pip install --upgrade ghfind"
+      },
+      {
+        "name": "ghfind CLI",
+        "desc": "ghfind score {username} -o json · ghfind scan · ghfind roast · ghfind leaderboard · ghfind stats"
+      }
     ],
     "machineHeading": "Machine-readable surfaces",
     "machine": [
-      { "label": "/openapi.json", "desc": "OpenAPI 3.1 spec of every public endpoint" },
-      { "label": "/llms.txt", "desc": "Agent-facing guide with markdown links to every surface" },
-      { "label": "/index.md", "desc": "Markdown twin of the homepage (also served on Accept: text/markdown)" },
-      { "label": "/.well-known/agent-card.json", "desc": "A2A agent card, MCP server card, API catalog and skills under /.well-known/" }
+      {
+        "label": "/openapi.json",
+        "desc": "OpenAPI 3.1 spec of every public endpoint"
+      },
+      {
+        "label": "/llms.txt",
+        "desc": "Agent-facing guide with markdown links to every surface"
+      },
+      {
+        "label": "/index.md",
+        "desc": "Markdown twin of the homepage (also served on Accept: text/markdown)"
+      },
+      {
+        "label": "/.well-known/agent-card.json",
+        "desc": "A2A agent card, MCP server card, API catalog and skills under /.well-known/"
+      }
     ]
   },
   "about": {

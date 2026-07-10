@@ -107,7 +107,10 @@
     "metaDescription": "按编程语言、项目和组织浏览 GitHub 头部开发者榜单。",
     "bucketMetaDescription": "{value} 方向评分最高的 GitHub 开发者榜单。",
     "apiCta": "需要批量评估开发者（招聘初筛、账号可信度核验）？本榜单的每个分数都来自 ghfind API——对任意 GitHub 账号做确定性 0-100 评分，适度调用免费。",
-    "apiCtaLink": "API 文档 →"
+    "apiCtaLink": "API 文档 →",
+    "repoAuthoredBy": "作者",
+    "repoContributors": "位上榜贡献者",
+    "repoAvgScore": "平均分"
   },
   "challenge": {
     "bannerTitle": "从 @{owner} 的主页来的？测测你在 TA 面前是什么成色",
@@ -301,11 +304,26 @@
     "brand": "🔥 ghfind · 来测测你的含金量"
   },
   "tiers": {
-    "god": { "name": "夯", "blurb": "封神 · 殿堂级标杆" },
-    "elite": { "name": "顶级", "blurb": "顶级开发者 · 一线水准" },
-    "solid": { "name": "人上人", "blurb": "优质贡献者 · 值得信任" },
-    "npc": { "name": "NPC", "blurb": "普通账号 · 特征平庸存疑" },
-    "trash": { "name": "拉完了", "blurb": "低价值 · 疑似刷量 / AI 机器人" }
+    "god": {
+      "name": "夯",
+      "blurb": "封神 · 殿堂级标杆"
+    },
+    "elite": {
+      "name": "顶级",
+      "blurb": "顶级开发者 · 一线水准"
+    },
+    "solid": {
+      "name": "人上人",
+      "blurb": "优质贡献者 · 值得信任"
+    },
+    "npc": {
+      "name": "NPC",
+      "blurb": "普通账号 · 特征平庸存疑"
+    },
+    "trash": {
+      "name": "拉完了",
+      "blurb": "低价值 · 疑似刷量 / AI 机器人"
+    }
   },
   "dimensions": {
     "account_maturity": "账号成熟度",
@@ -445,39 +463,102 @@
     "restHeading": "ghfind REST API",
     "restIntro": "Base URL：https://ghfind.com。评分读取接口无需认证。错误为结构化 JSON（{error, message, hint}），响应携带 RateLimit-* 头，列表接口支持 limit/offset 分页。",
     "endpoints": [
-      { "sig": "GET /api/score/{username}", "desc": "确定性 0–100 分、段位和六维拆解。未见过的账号也能实时评分；无需认证，不经过 LLM。" },
-      { "sig": "POST /api/scan", "desc": "完整的确定性扫描载荷：原始指标、头部仓库、近期 PR、风险标记、子分数。" },
-      { "sig": "POST /api/roast", "desc": "AI 吐槽报告（唯一的 LLM 接口，支持自带 key）。" },
-      { "sig": "POST /api/vs-verdict", "desc": "两个账号的对战裁决。" },
-      { "sig": "GET /api/leaderboard", "desc": "按 trending/score/heat/progress 排序的开发者榜单，支持 limit/offset 分页。" },
-      { "sig": "GET /api/developers", "desc": "按语言、组织或参与仓库的开发者目录，支持分页。" },
-      { "sig": "GET /api/search-users", "desc": "对已评分账号做前缀搜索。" },
-      { "sig": "GET /api/stats", "desc": "平台总量统计（已评分账号数）。" },
-      { "sig": "GET /api/badge/{username}", "desc": "可嵌入 README 的 SVG 评分徽章。" }
+      {
+        "sig": "GET /api/score/{username}",
+        "desc": "确定性 0–100 分、段位和六维拆解。未见过的账号也能实时评分；无需认证，不经过 LLM。"
+      },
+      {
+        "sig": "POST /api/scan",
+        "desc": "完整的确定性扫描载荷：原始指标、头部仓库、近期 PR、风险标记、子分数。"
+      },
+      {
+        "sig": "POST /api/roast",
+        "desc": "AI 吐槽报告（唯一的 LLM 接口，支持自带 key）。"
+      },
+      {
+        "sig": "POST /api/vs-verdict",
+        "desc": "两个账号的对战裁决。"
+      },
+      {
+        "sig": "GET /api/leaderboard",
+        "desc": "按 trending/score/heat/progress 排序的开发者榜单，支持 limit/offset 分页。"
+      },
+      {
+        "sig": "GET /api/developers",
+        "desc": "按语言、组织或参与仓库的开发者目录，支持分页。"
+      },
+      {
+        "sig": "GET /api/search-users",
+        "desc": "对已评分账号做前缀搜索。"
+      },
+      {
+        "sig": "GET /api/stats",
+        "desc": "平台总量统计（已评分账号数）。"
+      },
+      {
+        "sig": "GET /api/badge/{username}",
+        "desc": "可嵌入 README 的 SVG 评分徽章。"
+      }
     ],
     "mcpHeading": "ghfind MCP 服务器",
     "mcpIntro": "Streamable HTTP 协议的 Model Context Protocol 服务器位于 https://ghfind.com/mcp（无需认证、按 IP 限流、只读）。把它加进 Claude、Cursor 或任意 MCP 客户端，即可在 Agent 内直接评分和对比 GitHub 账号。",
     "tools": [
-      { "name": "score_user", "desc": "任意 GitHub 账号的 0–100 分、段位和六维拆解。" },
-      { "name": "scan_user", "desc": "完整扫描载荷：指标、头部仓库、近期 PR、风险标记。" },
-      { "name": "compare_users", "desc": "确定性对战比较，给出胜者与分差。" },
-      { "name": "get_leaderboard", "desc": "公开开发者榜单，用于发现。" },
-      { "name": "search_users", "desc": "已评分账号的前缀搜索。" }
+      {
+        "name": "score_user",
+        "desc": "任意 GitHub 账号的 0–100 分、段位和六维拆解。"
+      },
+      {
+        "name": "scan_user",
+        "desc": "完整扫描载荷：指标、头部仓库、近期 PR、风险标记。"
+      },
+      {
+        "name": "compare_users",
+        "desc": "确定性对战比较，给出胜者与分差。"
+      },
+      {
+        "name": "get_leaderboard",
+        "desc": "公开开发者榜单，用于发现。"
+      },
+      {
+        "name": "search_users",
+        "desc": "已评分账号的前缀搜索。"
+      }
     ],
     "authHeading": "认证",
     "authBody": "读取接口全部公开。写入接口（POST /api/scan、POST /api/roast）接受浏览器 Turnstile 验证或 Bearer API key。Agent 请阅读 /auth.md 的机器可读指引。",
     "sdkHeading": "官方 SDK 与 CLI",
     "sdks": [
-      { "name": "@hikariming/ghfind (npm)", "desc": "JavaScript / TypeScript SDK 与 CLI：npm install -g @hikariming/ghfind" },
-      { "name": "ghfind (PyPI)", "desc": "Python SDK：pip install --upgrade ghfind" },
-      { "name": "ghfind CLI", "desc": "ghfind score {username} -o json · ghfind scan · ghfind roast · ghfind leaderboard · ghfind stats" }
+      {
+        "name": "@hikariming/ghfind (npm)",
+        "desc": "JavaScript / TypeScript SDK 与 CLI：npm install -g @hikariming/ghfind"
+      },
+      {
+        "name": "ghfind (PyPI)",
+        "desc": "Python SDK：pip install --upgrade ghfind"
+      },
+      {
+        "name": "ghfind CLI",
+        "desc": "ghfind score {username} -o json · ghfind scan · ghfind roast · ghfind leaderboard · ghfind stats"
+      }
     ],
     "machineHeading": "机器可读入口",
     "machine": [
-      { "label": "/openapi.json", "desc": "覆盖全部公开接口的 OpenAPI 3.1 规范" },
-      { "label": "/llms.txt", "desc": "面向 Agent 的指南，含所有入口的 markdown 链接" },
-      { "label": "/index.md", "desc": "首页的 markdown 孪生（Accept: text/markdown 时也会返回）" },
-      { "label": "/.well-known/agent-card.json", "desc": "/.well-known/ 下的 A2A agent card、MCP server card、API catalog 与 skills" }
+      {
+        "label": "/openapi.json",
+        "desc": "覆盖全部公开接口的 OpenAPI 3.1 规范"
+      },
+      {
+        "label": "/llms.txt",
+        "desc": "面向 Agent 的指南，含所有入口的 markdown 链接"
+      },
+      {
+        "label": "/index.md",
+        "desc": "首页的 markdown 孪生（Accept: text/markdown 时也会返回）"
+      },
+      {
+        "label": "/.well-known/agent-card.json",
+        "desc": "/.well-known/ 下的 A2A agent card、MCP server card、API catalog 与 skills"
+      }
     ]
   },
   "about": {

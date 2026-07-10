@@ -22,6 +22,7 @@ import {
   type ProfileCommentAuthor,
 } from "./comments";
 import { extractFacets, type FacetType } from "./facets";
+import { extractRepoGraph, type RepoGraph } from "./repo-graph";
 import {
   emptyReactionCounts,
   isProfileReaction,
@@ -353,6 +354,44 @@ function ensureSchema(db: Client): Promise<void> {
              PRIMARY KEY (follower_github_id, target_username)
            )`,
           `CREATE INDEX IF NOT EXISTS idx_follows_target ON follows(target_username)`,
+          // Repositories as first-class entities — the normalized project layer
+          // derived from profile_snapshots (top_repos + impact_repos) by
+          // lib/repo-graph.ts. Promotes repos out of the per-scan JSON blobs so
+          // the project pages / project ranking can aggregate by repo instead of
+          // re-parsing every snapshot. `repo_key` is lowercased "owner/name";
+          // metadata is best-effort (contributor-only repos carry null
+          // language/description until their owner is scanned). Upserted per scan.
+          `CREATE TABLE IF NOT EXISTS repos (
+             repo_key        TEXT PRIMARY KEY,
+             name_with_owner TEXT NOT NULL,
+             owner_login     TEXT NOT NULL,
+             name            TEXT NOT NULL,
+             description     TEXT,
+             stars           INTEGER NOT NULL DEFAULT 0,
+             forks           INTEGER,
+             language        TEXT,
+             topics          TEXT,
+             updated_at      INTEGER NOT NULL
+           )`,
+          `CREATE INDEX IF NOT EXISTS idx_repos_stars ON repos(stars DESC)`,
+          `CREATE INDEX IF NOT EXISTS idx_repos_owner ON repos(owner_login)`,
+          // The developer⟷repo edge. relation = 'owner' (their own/attributed
+          // work) | 'contributor' (landed commits/PRs). Powers both directions:
+          // a repo's contributor list (WHERE repo_key = ?) and a developer's
+          // projects (WHERE username = ?). weight ranks a repo's devs — stars for
+          // owners, commit+PR volume for contributors. Rewritten per developer on
+          // each scan so it self-heals as profiles refresh.
+          `CREATE TABLE IF NOT EXISTS repo_developers (
+             repo_key   TEXT NOT NULL,
+             username   TEXT NOT NULL,
+             relation   TEXT NOT NULL CHECK(relation IN ('owner','contributor')),
+             commits    INTEGER,
+             prs        INTEGER,
+             weight     REAL NOT NULL DEFAULT 0,
+             updated_at INTEGER NOT NULL,
+             PRIMARY KEY (repo_key, username, relation)
+           )`,
+          `CREATE INDEX IF NOT EXISTS idx_repo_developers_user ON repo_developers(username)`,
         ],
         "write",
       );
@@ -374,6 +413,11 @@ function ensureSchema(db: Client): Promise<void> {
         // Populated by recordScore on a genuinely later re-scan; NULL until then.
         "prev_score REAL",
         "prev_scanned_at INTEGER",
+        // Influence signals lifted out of the profile_snapshots.metrics JSON so
+        // the VIP-outreach candidate query can rank by them in SQL. Written by
+        // recordProfileSnapshot; NULL until a snapshot lands.
+        "followers INTEGER",
+        "total_stars INTEGER",
       ]) {
         try {
           await db.execute(`ALTER TABLE scores ADD COLUMN ${col}`);
@@ -593,8 +637,114 @@ export async function recordProfileSnapshot(scan: ScanResult): Promise<void> {
         impact_repos: scan.impact_repos,
       }),
     );
+    // Normalize the same scan into the repo graph (repos + repo_developers), so
+    // every snapshot also refreshes the project layer that powers project pages
+    // and the project ranking. Independent best-effort write, like facets above.
+    await recordRepoGraph(
+      username,
+      extractRepoGraph({ top_repos: scan.top_repos, impact_repos: scan.impact_repos }),
+    );
+    // Lift the two influence signals the VIP-outreach query ranks by out of the
+    // metrics JSON and onto the (already-written) scores row. recordScore runs
+    // before this in the roast path, so the row exists; a no-op if it doesn't.
+    await updateInfluenceStats(username, scan.metrics.followers, scan.metrics.total_stars);
   } catch (e) {
     console.error("recordProfileSnapshot failed:", e);
+  }
+}
+
+/**
+ * Move the `followers` / `total_stars` influence signals onto an existing scores
+ * row (they otherwise live only inside the metrics JSON). UPDATE-only: a no-op
+ * when the row doesn't exist, since the scores row is always written first in the
+ * roast path. Shared by {@link recordProfileSnapshot} and the repo-graph
+ * backfill. Best-effort like the rest of this module.
+ */
+export async function updateInfluenceStats(
+  username: string,
+  followers: number | null | undefined,
+  totalStars: number | null | undefined,
+): Promise<void> {
+  const db = getClient();
+  if (!db) return;
+  try {
+    await ensureSchema(db);
+    await db.execute({
+      sql: `UPDATE scores SET followers = ?, total_stars = ? WHERE username = ?`,
+      args: [followers ?? null, totalStars ?? null, username.toLowerCase()],
+    });
+  } catch (e) {
+    console.error("updateInfluenceStats failed:", e);
+  }
+}
+
+/**
+ * Replace a developer's repo-graph rows wholesale (delete-then-insert in one
+ * batch transaction) so a re-scan can't leave stale edges behind — a dev who
+ * dropped a project keeps no phantom link. Repos themselves are upserted, never
+ * deleted (they're shared across developers): stars/metadata move forward only
+ * when a scan reports a higher star count or richer fields, so a
+ * metadata-thin contributor scan never clobbers an owner's rich record. No-op
+ * without Turso; best-effort like the rest of this module. Called from
+ * {@link recordProfileSnapshot} and the repo-graph backfill.
+ */
+export async function recordRepoGraph(username: string, graph: RepoGraph): Promise<void> {
+  const db = getClient();
+  if (!db) return;
+  try {
+    await ensureSchema(db);
+    const normalized = username.toLowerCase();
+    const now = Date.now();
+    await db.batch(
+      [
+        // Upsert each repo. On conflict, take the larger star count and only
+        // overwrite optional metadata when the incoming scan actually carries it
+        // (COALESCE keeps an owner's language/description from being nulled by a
+        // later contributor-only scan of the same repo).
+        ...graph.repos.map((r) => ({
+          sql: `INSERT INTO repos
+                  (repo_key, name_with_owner, owner_login, name, description, stars, forks, language, topics, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(repo_key) DO UPDATE SET
+                  name_with_owner = excluded.name_with_owner,
+                  owner_login     = excluded.owner_login,
+                  name            = excluded.name,
+                  description     = COALESCE(excluded.description, repos.description),
+                  stars           = MAX(repos.stars, excluded.stars),
+                  forks           = COALESCE(excluded.forks, repos.forks),
+                  language        = COALESCE(excluded.language, repos.language),
+                  topics          = CASE WHEN excluded.topics <> '[]' THEN excluded.topics ELSE repos.topics END,
+                  updated_at      = excluded.updated_at`,
+          args: [
+            r.repo_key,
+            r.name_with_owner,
+            r.owner_login,
+            r.name,
+            r.description,
+            r.stars,
+            r.forks,
+            r.language,
+            JSON.stringify(r.topics ?? []),
+            now,
+          ] as (string | number | null)[],
+        })),
+        // Replace this developer's edges wholesale.
+        { sql: `DELETE FROM repo_developers WHERE username = ?`, args: [normalized] },
+        ...graph.links.map((l) => ({
+          sql: `INSERT OR REPLACE INTO repo_developers
+                  (repo_key, username, relation, commits, prs, weight, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          args: [l.repo_key, normalized, l.relation, l.commits, l.prs, l.weight, now] as (
+            | string
+            | number
+            | null
+          )[],
+        })),
+      ],
+      "write",
+    );
+  } catch (e) {
+    console.error("recordRepoGraph failed:", e);
   }
 }
 
@@ -1339,6 +1489,155 @@ export async function getDevelopersByFacet(
   } catch (e) {
     console.error("getDevelopersByFacet failed:", e);
     return [];
+  }
+}
+
+/** Canonical tier order, best → worst — for a stable tier-distribution readout. */
+const TIER_ORDER: Tier[] = ["夯", "顶级", "人上人", "NPC", "拉完了"];
+
+export interface RepoDetail {
+  repo_key: string;
+  name_with_owner: string;
+  owner_login: string;
+  name: string;
+  description: string | null;
+  stars: number;
+  forks: number | null;
+  language: string | null;
+  topics: string[];
+}
+
+/** The repo owner as a scored account, when the owner has been scanned (personal
+ *  repos; org-owned attributed repos have no matching scores row → null). */
+export interface RepoOwnerRef {
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  final_score: number;
+  tier: Tier;
+}
+
+/** Aggregate quality of the developers linked to a repo — the differentiated
+ *  read ("who works on this, and how good are they") the project page leads with.
+ *  Computed over scored, non-hidden owners + contributors. */
+export interface RepoContributorSummary {
+  count: number;
+  avgScore: number;
+  /** Non-empty tier buckets in canonical order, for a distribution bar. */
+  tierCounts: { tier: Tier; count: number }[];
+}
+
+export interface RepoOverview {
+  repo: RepoDetail;
+  owner: RepoOwnerRef | null;
+  summary: RepoContributorSummary;
+}
+
+/**
+ * Everything the project page's header + quality summary needs for one repo, in a
+ * few index-seek queries: the repo row (from the normalized `repos` table), the
+ * owner as a scored account (join `scores` on the repo's owner login), and the
+ * contributor-quality aggregate (over `repo_developers ⋈ scores`). Returns null
+ * when the repo isn't in the graph yet, so the page degrades to the plain
+ * contributor list. Best-effort; never throws.
+ */
+export async function getRepoOverview(repoKey: string): Promise<RepoOverview | null> {
+  const db = getClient();
+  if (!db || !repoKey) return null;
+  try {
+    await ensureSchema(db);
+    const key = repoKey.toLowerCase();
+    const repoRes = await db.execute({
+      sql: `SELECT repo_key, name_with_owner, owner_login, name, description, stars, forks, language, topics
+            FROM repos WHERE repo_key = ?`,
+      args: [key],
+    });
+    const r = repoRes.rows[0];
+    if (!r) return null;
+    const repo: RepoDetail = {
+      repo_key: String(r.repo_key),
+      name_with_owner: String(r.name_with_owner),
+      owner_login: String(r.owner_login),
+      name: String(r.name),
+      description: (r.description as string | null) ?? null,
+      stars: Number(r.stars ?? 0),
+      forks: r.forks == null ? null : Number(r.forks),
+      language: (r.language as string | null) ?? null,
+      topics: parseJsonArray<string>(r.topics),
+    };
+
+    const [ownerRes, contribRes] = await Promise.all([
+      db.execute({
+        sql: `SELECT username, display_name, avatar_url, final_score, tier
+              FROM scores WHERE username = ? AND hidden = 0`,
+        args: [repo.owner_login],
+      }),
+      db.execute({
+        sql: `SELECT s.tier AS tier, s.final_score AS final_score
+              FROM repo_developers AS rd
+              JOIN scores AS s ON s.username = rd.username
+              WHERE rd.repo_key = ? AND s.hidden = 0`,
+        args: [key],
+      }),
+    ]);
+
+    const o = ownerRes.rows[0];
+    const owner: RepoOwnerRef | null = o
+      ? {
+          username: String(o.username),
+          display_name: (o.display_name as string | null) ?? null,
+          avatar_url: (o.avatar_url as string | null) ?? null,
+          final_score: Number(o.final_score ?? 0),
+          tier: o.tier as Tier,
+        }
+      : null;
+
+    const counts = new Map<Tier, number>();
+    let scoreSum = 0;
+    for (const row of contribRes.rows) {
+      const tier = row.tier as Tier;
+      counts.set(tier, (counts.get(tier) ?? 0) + 1);
+      scoreSum += Number(row.final_score ?? 0);
+    }
+    const count = contribRes.rows.length;
+    const summary: RepoContributorSummary = {
+      count,
+      avgScore: count > 0 ? Math.round((scoreSum / count) * 10) / 10 : 0,
+      tierCounts: TIER_ORDER.filter((t) => counts.has(t)).map((t) => ({
+        tier: t,
+        count: counts.get(t)!,
+      })),
+    };
+
+    return { repo, owner, summary };
+  } catch (e) {
+    console.error("getRepoOverview failed:", e);
+    return null;
+  }
+}
+
+/**
+ * Of the given "owner/name" repo keys, the subset that exist as first-class rows
+ * in the `repos` table — so a profile page can link a repo card to its internal
+ * project page only when that page has content, and fall back to GitHub otherwise.
+ * One indexed `IN` seek over the primary key; returns an empty set on any failure
+ * (callers then keep the external GitHub links, the pre-Phase-B behavior).
+ */
+export async function filterExistingRepoKeys(keys: string[]): Promise<Set<string>> {
+  const db = getClient();
+  const normalized = [...new Set(keys.map((k) => k.toLowerCase()).filter(Boolean))];
+  if (!db || normalized.length === 0) return new Set();
+  try {
+    await ensureSchema(db);
+    const placeholders = normalized.map(() => "?").join(",");
+    const res = await db.execute({
+      sql: `SELECT repo_key FROM repos WHERE repo_key IN (${placeholders})`,
+      args: normalized,
+    });
+    return new Set(res.rows.map((r) => String(r.repo_key)));
+  } catch (e) {
+    console.error("filterExistingRepoKeys failed:", e);
+    return new Set();
   }
 }
 
