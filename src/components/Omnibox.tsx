@@ -12,6 +12,7 @@ import {
   shouldAutoLockPkIntent,
 } from "@/lib/omnibox";
 import type { UserSuggestion } from "@/lib/db";
+import type { RepoSuggestion } from "@/lib/search";
 import { tierStyle } from "@/lib/tier";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +80,7 @@ export function Omnibox({
   const [activeIndex, setActiveIndex] = useState(-1);
   const [phIndex, setPhIndex] = useState(0);
   const [dbUsers, setDbUsers] = useState<UserSuggestion[]>([]);
+  const [dbRepos, setDbRepos] = useState<RepoSuggestion[]>([]);
 
   // Rotate the placeholder (post-mount only, so SSR/CSR markup matches).
   useEffect(() => {
@@ -108,6 +110,7 @@ export function Omnibox({
     const id = setTimeout(async () => {
       if (q.length < 1) {
         setDbUsers([]);
+        setDbRepos([]);
         return;
       }
       try {
@@ -115,8 +118,12 @@ export function Omnibox({
           signal: ctrl.signal,
         });
         if (!res.ok) return;
-        const data = (await res.json()) as { users?: UserSuggestion[] };
+        const data = (await res.json()) as {
+          users?: UserSuggestion[];
+          repos?: RepoSuggestion[];
+        };
         setDbUsers(data.users ?? []);
+        setDbRepos(data.repos ?? []);
       } catch {
         /* aborted or offline — keep the last results */
       }
@@ -258,11 +265,34 @@ export function Omnibox({
       user: u,
       activate: pkA ? () => duelWith(u.username) : () => roastUser(u.username),
     }));
-    return [...intentRows, ...userRows].sort(
+    const repoRows: Row[] = pkA
+      ? []
+      : dbRepos.map((repo) => ({
+          key: `repo-${repo.repo_key}`,
+          group: "discover",
+          icon: "◫",
+          label: repo.name_with_owner,
+          hint: `${repo.language ?? ""}${repo.language ? " · " : ""}★${repo.stars.toLocaleString()}`,
+          activate: () => {
+            setOpen(false);
+            router.push(repo.href);
+          },
+        }));
+    return [...intentRows, ...userRows, ...repoRows].sort(
       (a, b) => GROUP_ORDER[a.group] - GROUP_ORDER[b.group],
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestions, dbUsers, dbLower, pkA, activateIntent, duelWith, roastUser]);
+  }, [
+    suggestions,
+    dbUsers,
+    dbRepos,
+    dbLower,
+    pkA,
+    activateIntent,
+    duelWith,
+    roastUser,
+    router,
+  ]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
