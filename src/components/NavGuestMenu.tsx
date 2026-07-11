@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Languages, Palette, SlidersHorizontal } from "lucide-react";
+import { ArrowUpRight, Palette, SlidersHorizontal } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
   DropdownMenu,
@@ -9,7 +9,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 function GitHubMark() {
@@ -29,9 +28,8 @@ export function NavGuestMenu({
   repoLabel: string;
   repoTitle: string;
 }) {
-  const tLang = useTranslations("langSwitch");
   const tTheme = useTranslations("themeSwitch");
-  const triggerLabel = `${tLang("label")} / ${tTheme("label")}`;
+  const triggerLabel = tTheme("label");
 
   return (
     <DropdownMenu>
@@ -74,14 +72,6 @@ export function NavGuestMenu({
         </DropdownMenuItem>
 
         <DropdownMenuSeparator className="mx-1 bg-white/10" />
-
-        <div className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5">
-          <span className="flex items-center gap-2.5 text-sm text-zinc-300">
-            <Languages className="h-4 w-4 text-zinc-300" />
-            {tLang("label")}
-          </span>
-          <LanguageSwitcher />
-        </div>
 
         <div className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5">
           <span className="flex items-center gap-2.5 text-sm text-zinc-300">

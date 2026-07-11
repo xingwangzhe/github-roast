@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Languages, LogOut, Palette, UserRound } from "lucide-react";
+import { ArrowUpRight, LogOut, Palette, UserRound, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { signOut } from "next-auth/react";
 import { Link } from "@/i18n/navigation";
@@ -11,7 +11,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 type WorkspaceUserMenuProps = {
@@ -44,7 +43,7 @@ export function WorkspaceUserMenu({
   repoTitle,
 }: WorkspaceUserMenuProps) {
   const tHeader = useTranslations("header");
-  const tLang = useTranslations("langSwitch");
+  const tFollow = useTranslations("follow");
   const tTheme = useTranslations("themeSwitch");
   const targetHref = scored
     ? `/u/${login}`
@@ -101,6 +100,19 @@ export function WorkspaceUserMenu({
           </Link>
         </DropdownMenuItem>
 
+        <DropdownMenuItem asChild>
+          <Link
+            href="/following"
+            className="flex items-center justify-between rounded-xl px-3 py-2.5"
+          >
+            <span className="flex items-center gap-2.5">
+              <Users className="h-4 w-4 text-zinc-300" />
+              <span>{tFollow("menuLink")}</span>
+            </span>
+            <ArrowUpRight className="h-4 w-4 text-zinc-500" />
+          </Link>
+        </DropdownMenuItem>
+
         <DropdownMenuSeparator className="mx-1 bg-white/10" />
 
         <DropdownMenuItem asChild>
@@ -120,14 +132,6 @@ export function WorkspaceUserMenu({
         </DropdownMenuItem>
 
         <DropdownMenuSeparator className="mx-1 bg-white/10" />
-
-        <div className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5">
-          <span className="flex items-center gap-2.5 text-sm text-zinc-300">
-            <Languages className="h-4 w-4 text-zinc-300" />
-            {tLang("label")}
-          </span>
-          <LanguageSwitcher />
-        </div>
 
         <div className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5">
           <span className="flex items-center gap-2.5 text-sm text-zinc-300">

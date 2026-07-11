@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Languages, LogOut, Menu, Palette, UserRound, X } from "lucide-react";
+import { ArrowUpRight, Languages, LogOut, Menu, Palette, UserRound, Users, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { signIn, signOut } from "next-auth/react";
@@ -35,6 +35,7 @@ export function MobileMenu({
 }) {
   const t = useTranslations("nav");
   const tHeader = useTranslations("header");
+  const tFollow = useTranslations("follow");
   const tLang = useTranslations("langSwitch");
   const tTheme = useTranslations("themeSwitch");
   const tRepo = useTranslations("repoLink");
@@ -138,6 +139,20 @@ export function MobileMenu({
                       <ArrowUpRight className="h-4 w-4 shrink-0 text-zinc-500" />
                     </Link>
                   ) : null}
+
+                  <div className="h-px bg-white/10" />
+
+                  <Link
+                    href="/following"
+                    onClick={close}
+                    className="flex min-h-12 items-center justify-between gap-3 px-4 py-3 text-sm text-zinc-300 transition-colors hover:bg-white/[0.04] hover:text-zinc-100"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <Users className="h-4 w-4 shrink-0 text-zinc-400" />
+                      <span className="truncate">{tFollow("menuLink")}</span>
+                    </span>
+                    <ArrowUpRight className="h-4 w-4 shrink-0 text-zinc-500" />
+                  </Link>
 
                   <div className="h-px bg-white/10" />
                 </>

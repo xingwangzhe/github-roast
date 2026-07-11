@@ -7,6 +7,7 @@ import { NavAuth } from "./NavAuth";
 import { MobileMenu } from "./MobileMenu";
 import { BrandMark } from "./BrandMark";
 import { GlobalSearch } from "./GlobalSearch";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 
 /**
  * Site-wide top bar. Keep the public-site feel: plain brand on the left, normal
@@ -38,6 +39,13 @@ export async function Navbar() {
             <GlobalSearch />
           </div>
           <div className="hidden items-center gap-2 sm:flex md:gap-1.5">
+            {/* Language toggle sits inline next to the avatar box — surfaced
+                here rather than buried in the account/settings dropdown so
+                visitors can switch locale in one click. Hidden below md to keep
+                the smaller navbar from getting crowded. */}
+            <div className="hidden md:block">
+              <LanguageSwitcher />
+            </div>
             <NavAuth
               configured={oauthConfigured}
               repoHref={repoHref}

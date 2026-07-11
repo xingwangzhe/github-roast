@@ -199,7 +199,13 @@
     "homeTitle": "Developers you follow",
     "homeSub": "score moves this week",
     "homeEmpty": "Follow developers from their profile page, then come back here to watch their scores move.",
-    "unrated": "unrated"
+    "unrated": "unrated",
+    "menuLink": "Developers you follow",
+    "pageTitle": "Developers you follow",
+    "pageSubtitle": "score moves this week",
+    "signInTitle": "Sign in to see who you follow",
+    "signInBody": "Sign in with GitHub, follow developers, then come back here to watch their scores move.",
+    "signIn": "Sign in with GitHub"
   },
   "detail": {
     "back": "← Back to Hall of Fame",

@@ -199,7 +199,13 @@
     "homeTitle": "我关注的人",
     "homeSub": "本周分数变化",
     "homeEmpty": "在开发者的个人页点「关注」,回来这里看他们的分数涨跌。",
-    "unrated": "未评分"
+    "unrated": "未评分",
+    "menuLink": "我关注的人",
+    "pageTitle": "我关注的人",
+    "pageSubtitle": "本周分数变化",
+    "signInTitle": "登录后查看关注",
+    "signInBody": "用 GitHub 登录，关注开发者，回来这里看他们的分数涨跌。",
+    "signIn": "用 GitHub 登录"
   },
   "detail": {
     "back": "← 返回名人堂",

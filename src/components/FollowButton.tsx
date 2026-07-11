@@ -10,8 +10,8 @@ type FollowState = "loading" | "anon" | "following" | "not_following";
  * Follow/unfollow toggle on a profile page. Probes follow state on mount
  * (the GET stays quiet — plain `signedIn:false` — for anonymous visitors);
  * an anonymous click routes into GitHub sign-in instead, so the button doubles
- * as a conversion point. Followed handles feed the homepage HomeFollowing
- * module — the "reason to come back" loop.
+ * as a conversion point. Followed handles feed the "我关注的人" board on the
+ * /following page (reached from the avatar menu) — the "reason to come back" loop.
  */
 export function FollowButton({
   username,
