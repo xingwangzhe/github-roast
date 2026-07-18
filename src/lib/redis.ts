@@ -634,7 +634,10 @@ export async function clearCachedLeaderboards(): Promise<void> {
 // in-process single-flight (lib/developers.ts), the DB query runs at most once
 // per key per TTL even under a burst.
 const FACET_TTL_SECONDS = 600; // 10 min
-const PROJECT_DISCOVERY_TTL_SECONDS = 600;
+// The repo graph only changes on scans/backfills, and each cold miss on the
+// unfiltered /projects list is a whole-graph aggregation — so discovery reads
+// tolerate hours of staleness. Matches the facet boards' 6h ISR window.
+const PROJECT_DISCOVERY_TTL_SECONDS = 21600; // 6h
 
 // Bucket values are canonical (e.g. "Rust", "C++") and safe in a Redis key.
 const facetCategoriesKey = (type: FacetType) => `facets:cat:${type}`;

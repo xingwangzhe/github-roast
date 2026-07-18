@@ -1628,20 +1628,49 @@ async function queryProjectItems(
   },
 ): Promise<ProjectListItem[]> {
   const cutoff = Date.now() - TRENDING_LOOKUP_WINDOW_MS;
-  const clauses: string[] = [];
-  const filterArgs: (string | number)[] = [];
-  if (options.language) {
-    clauses.push("lower(r.language) = lower(?)");
-    filterArgs.push(options.language);
-  }
+  let result;
   if (options.repoKeys) {
     if (options.repoKeys.length === 0) return [];
-    clauses.push(`r.repo_key IN (${options.repoKeys.map(() => "?").join(",")})`);
-    filterArgs.push(...options.repoKeys);
-  }
-  const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-  const result = await db.execute({
-    sql: `WITH edges AS (
+    // Hot path (profile common-projects, related-projects): the key filter must
+    // live INSIDE the edge subquery — filtering the outer join instead makes
+    // SQLite materialize a DISTINCT over the whole repo_developers table per
+    // call (the 2026-07 rows_read incident). CROSS JOIN pins the join order so
+    // rows read stay proportional to the requested repos' contributor counts,
+    // and the correlated lookup count only reads those contributors' rows.
+    const placeholders = options.repoKeys.map(() => "?").join(",");
+    result = await db.execute({
+      sql: `WITH edges AS (
+              SELECT repo_key, username FROM repo_developers
+              WHERE repo_key IN (${placeholders})
+              GROUP BY repo_key, username
+            )
+            SELECT r.repo_key, r.name_with_owner, r.owner_login, r.name,
+                   r.description, r.stars, r.forks, r.language, r.topics,
+                   COUNT(*) AS contributor_count,
+                   AVG(s.final_score) AS avg_score,
+                   SUM(CASE WHEN s.tier IN ('夯', '顶级') THEN 1 ELSE 0 END) AS elite_count,
+                   COALESCE(SUM((
+                     SELECT COUNT(*) FROM account_lookup_limits AS l
+                     WHERE l.username = edges.username AND l.last_counted_at >= ?
+                   )), 0) AS recent_lookup_count
+            FROM edges
+            CROSS JOIN repos AS r ON r.repo_key = edges.repo_key
+            CROSS JOIN scores AS s ON s.username = edges.username
+              AND s.hidden = 0 AND s.final_score >= ?
+            ${options.language ? "WHERE lower(r.language) = lower(?)" : ""}
+            GROUP BY r.repo_key`,
+      args: [
+        ...options.repoKeys,
+        cutoff,
+        FACET_MIN_SCORE,
+        ...(options.language ? [options.language] : []),
+      ],
+    });
+  } else {
+    // Whole-graph aggregation (the /projects feed): inherently reads every
+    // edge, so it must only run behind the Redis cache (project-discovery.ts).
+    result = await db.execute({
+      sql: `WITH edges AS (
             SELECT DISTINCT repo_key, username FROM repo_developers
           ), recent AS (
             SELECT username, COUNT(*) AS recent_lookups
@@ -1660,10 +1689,15 @@ async function queryProjectItems(
           JOIN scores AS s ON s.username = edges.username
             AND s.hidden = 0 AND s.final_score >= ?
           LEFT JOIN recent ON recent.username = edges.username
-          ${where}
+          ${options.language ? "WHERE lower(r.language) = lower(?)" : ""}
           GROUP BY r.repo_key`,
-    args: [cutoff, FACET_MIN_SCORE, ...filterArgs],
-  });
+      args: [
+        cutoff,
+        FACET_MIN_SCORE,
+        ...(options.language ? [options.language] : []),
+      ],
+    });
+  }
   const rows = result.rows as unknown as Record<string, unknown>[];
   const metric = (row: Record<string, unknown>) => {
     const count = Number(row.contributor_count ?? 0);
@@ -1732,6 +1766,14 @@ export async function searchRepos(query: string, limit = 4): Promise<RepoDetail[
   }
 }
 
+/**
+ * Shared-contributor neighbors only. The same-language filler that used to live
+ * here moved to project-discovery.ts so it can reuse the per-language cached
+ * list — as a per-repo query it re-ran the whole-graph aggregation on every
+ * repo page (the 2026-07 rows_read incident). Both queries here are index
+ * seeks: target repo → its contributors (PK prefix), contributors → their other
+ * repos (idx_repo_developers_user), then the repoKeys fast path above.
+ */
 export async function getRelatedProjects(repoKey: string, limit = 6): Promise<RelatedProject[]> {
   const db = getClient();
   const key = repoKey.trim().toLowerCase();
@@ -1739,16 +1781,14 @@ export async function getRelatedProjects(repoKey: string, limit = 6): Promise<Re
   try {
     await ensureSchema(db);
     const shared = await db.execute({
-      sql: `WITH edges AS (
-              SELECT DISTINCT repo_key, username FROM repo_developers
-            ), target AS (
-              SELECT username FROM edges WHERE repo_key = ?
-            )
-            SELECT edges.repo_key, COUNT(*) AS shared_count
-            FROM edges JOIN target USING(username)
-            WHERE edges.repo_key <> ?
-            GROUP BY edges.repo_key
-            ORDER BY shared_count DESC, edges.repo_key ASC
+      sql: `SELECT rd.repo_key, COUNT(DISTINCT rd.username) AS shared_count
+            FROM (
+              SELECT DISTINCT username FROM repo_developers WHERE repo_key = ?
+            ) AS t
+            JOIN repo_developers AS rd ON rd.username = t.username
+            WHERE rd.repo_key <> ?
+            GROUP BY rd.repo_key
+            ORDER BY shared_count DESC, rd.repo_key ASC
             LIMIT ?`,
       args: [key, key, Math.max(1, Math.min(50, limit))],
     });
@@ -1761,7 +1801,7 @@ export async function getRelatedProjects(repoKey: string, limit = 6): Promise<Re
       repoKeys: keys,
       limit: keys.length || 1,
     });
-    const rankedShared = sharedProjects
+    return sharedProjects
       .sort(
         (a, b) =>
           (sharedCounts.get(b.repo.repo_key) ?? 0) -
@@ -1773,29 +1813,28 @@ export async function getRelatedProjects(repoKey: string, limit = 6): Promise<Re
         project,
         sharedContributorCount: sharedCounts.get(project.repo.repo_key) ?? 0,
       }));
-    if (rankedShared.length >= limit) return rankedShared;
-
-    const target = await db.execute({
-      sql: `SELECT language FROM repos WHERE repo_key = ? LIMIT 1`,
-      args: [key],
-    });
-    const language = (target.rows[0]?.language as string | null) ?? null;
-    if (!language) return rankedShared;
-    const fallback = await queryProjectItems(db, {
-      sort: "quality",
-      language,
-      limit: Math.max(limit * 2, 12),
-    });
-    const seen = new Set([key, ...rankedShared.map((item) => item.project.repo.repo_key)]);
-    return [
-      ...rankedShared,
-      ...fallback
-        .filter((project) => !seen.has(project.repo.repo_key))
-        .map((project) => ({ project, sharedContributorCount: 0 })),
-    ].slice(0, limit);
   } catch (e) {
     console.error("getRelatedProjects failed:", e);
     return [];
+  }
+}
+
+/** The repo's primary language, for the same-language related-projects filler
+ *  in project-discovery.ts. Single PK seek; null when unknown. */
+export async function getRepoLanguage(repoKey: string): Promise<string | null> {
+  const db = getClient();
+  const key = repoKey.trim().toLowerCase();
+  if (!db || !key) return null;
+  try {
+    await ensureSchema(db);
+    const res = await db.execute({
+      sql: `SELECT language FROM repos WHERE repo_key = ? LIMIT 1`,
+      args: [key],
+    });
+    return (res.rows[0]?.language as string | null) ?? null;
+  } catch (e) {
+    console.error("getRepoLanguage failed:", e);
+    return null;
   }
 }
 

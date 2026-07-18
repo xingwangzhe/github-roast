@@ -571,10 +571,14 @@ describe("project discovery queries", () => {
     expect(related[0]?.sharedContributorCount).toBe(2);
   });
 
-  it("falls back to same-language projects when contributors do not overlap", async () => {
+  it("returns no related projects when contributors do not overlap (language filler lives in project-discovery)", async () => {
     const related = await db.getRelatedProjects("discover/stars", 4);
-    expect(related[0]?.project.repo.repo_key).toBe("discover/rust-peer");
-    expect(related[0]?.sharedContributorCount).toBe(0);
+    expect(related).toEqual([]);
+  });
+
+  it("exposes a repo's language for the project-discovery filler", async () => {
+    await expect(db.getRepoLanguage("discover/stars")).resolves.toBe("Rust");
+    await expect(db.getRepoLanguage("discover/unknown")).resolves.toBeNull();
   });
 
   it("finds projects shared by two developers", async () => {
