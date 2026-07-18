@@ -16,7 +16,12 @@ import {
   SCORE_CACHE_VERSION,
   VERDICT_CACHE_VERSION,
 } from "./cache-version";
-import type { FacetCategory, LeaderboardEntry, LeaderboardWindow } from "./db";
+import type {
+  FacetCategory,
+  LeaderboardEntry,
+  LeaderboardWindow,
+  ScoreHistogramRow,
+} from "./db";
 import type { FacetType } from "./facets";
 import type { Lang } from "./lang";
 import type { ProfileReactionCounts } from "./reactions";
@@ -548,6 +553,32 @@ export async function checkVerdictRateLimit(ip: string): Promise<{ success: bool
     return { success: minute.success && day.success };
   } catch {
     return { success: true };
+  }
+}
+
+// Score histogram backing rank/percentile lookups (lib/rank.ts): one
+// whole-table aggregate per TTL serves every profile page, /api/score, share
+// card and MCP call, instead of an O(table) scan per request.
+const SCORE_HISTOGRAM_KEY = "score-hist:v1";
+const SCORE_HISTOGRAM_TTL_SECONDS = 300;
+
+export async function getCachedScoreHistogram(): Promise<ScoreHistogramRow[] | null> {
+  const r = getRedis();
+  if (!r) return null;
+  try {
+    return (await r.get<ScoreHistogramRow[]>(SCORE_HISTOGRAM_KEY)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setCachedScoreHistogram(rows: ScoreHistogramRow[]): Promise<void> {
+  const r = getRedis();
+  if (!r) return;
+  try {
+    await r.set(SCORE_HISTOGRAM_KEY, rows, { ex: SCORE_HISTOGRAM_TTL_SECONDS });
+  } catch {
+    // best-effort
   }
 }
 

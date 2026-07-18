@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { getAccountDetail, getPercentile, getRank, recordAccountLookup } from "@/lib/db";
+import { getAccountDetail, recordAccountLookup } from "@/lib/db";
+import { getPercentileCached, getRankCached } from "@/lib/rank";
 import { normalizeUsername } from "@/lib/username";
 import { beatPercent } from "@/lib/percentile";
 import { TIER_KEY } from "@/lib/tier";
@@ -42,7 +43,10 @@ function json(
 /** Deterministic global percentile/rank for a score, computed against the scored
  * population WITHOUT requiring the account to be in it. */
 async function percentileFor(finalScore: number) {
-  const [rank, pct] = await Promise.all([getRank(finalScore), getPercentile(finalScore)]);
+  const [rank, pct] = await Promise.all([
+    getRankCached(finalScore),
+    getPercentileCached(finalScore),
+  ]);
   return pct
     ? { beat: beatPercent(pct.below, pct.total), total: pct.total, rank: rank?.rank ?? null }
     : null;

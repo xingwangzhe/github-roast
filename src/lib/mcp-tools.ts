@@ -4,7 +4,8 @@
  * JS object. Deterministic, read-only, and routed through the same caches the REST
  * endpoints use, so an agent looping over these can't amplify GitHub/DB load.
  */
-import { getAccountDetail, getPercentile, getRank, searchScoredUsers } from "@/lib/db";
+import { getAccountDetail, searchScoredUsers } from "@/lib/db";
+import { getPercentileCached, getRankCached } from "@/lib/rank";
 import { getLeaderboardCached } from "@/lib/leaderboard";
 import type { LeaderboardCacheView } from "@/lib/redis";
 import type { LeaderboardWindow } from "@/lib/db";
@@ -19,7 +20,10 @@ import type { ScanResult, Tier } from "@/lib/types";
 export type ToolError = { error: string; message: string };
 
 async function percentileFor(finalScore: number) {
-  const [rank, pct] = await Promise.all([getRank(finalScore), getPercentile(finalScore)]);
+  const [rank, pct] = await Promise.all([
+    getRankCached(finalScore),
+    getPercentileCached(finalScore),
+  ]);
   return pct
     ? { beat: beatPercent(pct.below, pct.total), total: pct.total, rank: rank?.rank ?? null }
     : null;

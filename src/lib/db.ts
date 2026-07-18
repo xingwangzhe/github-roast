@@ -1053,6 +1053,41 @@ export async function getRank(
   }
 }
 
+/** One bucket of the score distribution: 0.1-point granularity (score × 10),
+ *  split by hidden so both getRank (visible only) and getPercentile (everyone)
+ *  semantics can be derived from the same aggregate. */
+export interface ScoreHistogramRow {
+  hidden: number;
+  bucket: number;
+  n: number;
+}
+
+/**
+ * Whole-table score distribution in one aggregate scan. Runs once per cache
+ * TTL (lib/rank.ts) and answers every rank/percentile lookup from memory —
+ * the per-request O(table) SUM/COUNT in getRank/getPercentile was the next
+ * rows_read cliff after the 2026-07 discovery incident.
+ */
+export async function getScoreHistogram(): Promise<ScoreHistogramRow[]> {
+  const db = getClient();
+  if (!db) return [];
+  try {
+    await ensureSchema(db);
+    const res = await db.execute(
+      `SELECT hidden, CAST(ROUND(final_score * 10) AS INTEGER) AS bucket, COUNT(*) AS n
+       FROM scores GROUP BY hidden, bucket`,
+    );
+    return res.rows.map((r) => ({
+      hidden: Number(r.hidden),
+      bucket: Number(r.bucket),
+      n: Number(r.n),
+    }));
+  } catch (e) {
+    console.error("getScoreHistogram failed:", e);
+    return [];
+  }
+}
+
 export interface FacetRank {
   facetType: FacetType;
   /** The bucket value, e.g. "Rust" — also the display string and URL segment. */

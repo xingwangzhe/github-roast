@@ -32,10 +32,13 @@ vi.mock("botid/server", () => ({
 vi.mock("@/lib/db", () => ({
   getArchivedRoast: mocks.getArchivedRoast,
   getScoreScannedAt: mocks.getScoreScannedAt,
-  getRank: mocks.getRank,
   recordScore: mocks.recordScore,
   recordProfileSnapshot: mocks.recordProfileSnapshot,
   updateRoast: mocks.updateRoast,
+}));
+
+vi.mock("@/lib/rank", () => ({
+  getRankCached: mocks.getRank,
 }));
 
 vi.mock("@/lib/badge", () => ({
