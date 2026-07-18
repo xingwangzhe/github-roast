@@ -116,6 +116,12 @@ export default async function FacetBucketPage({
     type === "repo" ? getRelatedProjectsCached(value) : Promise.resolve([]),
   ]);
 
+  // An empty bucket (probed/garbage value, or one that lost all members) is
+  // thin content: rendering it would pay an ISR write per path × locale for a
+  // page nobody indexes. 404 instead; repo buckets with a real overview but no
+  // listed devs still render (the header is substance).
+  if (entries.length === 0 && !overview) notFound();
+
   const localePrefix = localePath(locale, "/").replace(/\/$/, "");
   const encodedPath = value.split("/").map(encodeURIComponent).join("/");
   const breadcrumb = breadcrumbJsonLd([
