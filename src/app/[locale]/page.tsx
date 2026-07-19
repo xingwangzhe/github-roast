@@ -14,14 +14,14 @@ import type { TierKey } from "@/lib/tier";
 // locale-only; DeveloperCount fetches client-side; the leaderboard preview reads
 // the cached board). Serving it from the CDN instead of rendering a function on
 // every visit is what frees the serverless pool for the LLM scan/roast traffic.
-// 60s keeps the leaderboard preview fresh enough; the window selector refetches
-// live client-side anyway.
+// Keep the durable snapshot for an hour: the interactive board refetches live
+// client-side, so minute-level regeneration only creates repeated ISR writes.
 // Pin the homepage to static + ISR. Next 16's "auto" heuristic otherwise renders
 // it on demand (a function per visit); forcing static serves the shell from the
-// CDN and revalidates the leaderboard preview every 60s. This is the change that
+// CDN and periodically refreshes the leaderboard preview. This is the change that
 // takes the bulk of homepage traffic off the serverless pool.
 export const dynamic = "force-static";
-export const revalidate = 60;
+export const revalidate = 3600;
 
 // Tier pills: emoji + color are language-neutral; the label comes from i18n.
 const TIER_PILLS: { key: TierKey; emoji: string; cls: string }[] = [

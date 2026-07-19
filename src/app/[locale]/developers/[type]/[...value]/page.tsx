@@ -21,28 +21,16 @@ import type { Tier } from "@/lib/types";
 import { localeAlternates, localePath } from "@/lib/site";
 import { JsonLd, breadcrumbJsonLd } from "@/components/JsonLd";
 
-// ISR, not force-dynamic: these boards are the heaviest crawler target on the
-// site (~16k function invocations/day, all cache MISS), and the data layer is
-// already Redis-cached — the CDN should absorb repeat hits. The `?u=` pin is
-// the only per-request bit, and it's resolved client-side (FacetBoardPinFromQuery)
-// precisely so this page can stay static.
+// Keep this long-tail route out of ISR. The URL space is ~10k buckets × 9
+// locales, and verified crawlers overwhelmingly request each URL only once.
+// Those requests already execute the page on an ISR MISS, then additionally
+// pay to persist several HTML/RSC artifacts that are rarely read again. The
+// underlying facet data remains Redis-cached, so dynamic rendering removes the
+// durable ISR writes without turning every request into a database query.
 //
-// 6h, not 10min: the URL space is ~10k buckets × 9 locales and AI crawlers do
-// full sweeps (claude-searchbot: 51k hits/24h after the 07-14 locale launch,
-// 82% MISS — cold entries get evicted and every re-crawl re-renders). A short
-// TTL buys nothing here: humans rarely land on these, and the live board is
-// /leaderboard. Long TTL keeps entries resident so repeat crawls hit the CDN.
-export const revalidate = 21600;
-
-// No pre-built paths — every bucket is generated on first hit, then cached for
-// `revalidate`. Without this export a dynamic-segment route is rendered per
-// request and never cached, which defeats the ISR conversion above.
-export function generateStaticParams(): {
-  type: string;
-  value: string[];
-}[] {
-  return [];
-}
+// `?u=` is still resolved client-side by FacetBoardPinFromQuery, so this can be
+// revisited if repeat human traffic ever outweighs crawler cold misses.
+export const dynamic = "force-dynamic";
 
 const FACET_TYPES: FacetType[] = ["language", "org", "repo"];
 
